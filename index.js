@@ -48,13 +48,18 @@ var modelCache = {
 var CACHE_TTL_MS = 60 * 60 * 1e3;
 var TEXT_MODEL_PRIORITY = [
   "nvidia/nemotron-3-super-120b-a12b:free",
+  "openai/gpt-oss-120b:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "minimax/minimax-m2.5:free",
   "stepfun/step-3.5-flash:free",
-  "minimax/minimax-m2.5:free"
+  "google/gemma-3-27b-it:free"
 ];
 var CODE_MODEL_PRIORITY = [
+  "openai/gpt-oss-120b:free",
+  "qwen/qwen3-coder:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
-  "stepfun/step-3.5-flash:free",
-  "minimax/minimax-m2.5:free"
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-20b:free"
 ];
 var IMAGE_MODEL_PRIORITY = [
   "google/gemini-2.5-flash-image",
@@ -70,7 +75,9 @@ var VIDEO_MODEL_PRIORITY = [
   "wan-ai/wan2.1-t2v-turbo"
 ];
 var VISION_MODEL_PRIORITY = [
-  "nvidia/nemotron-nano-12b-v2-vl:free"
+  "nvidia/nemotron-nano-12b-v2-vl:free",
+  "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+  "google/gemma-3-27b-it:free"
 ];
 async function fetchModelCatalog() {
   const now = Date.now();
