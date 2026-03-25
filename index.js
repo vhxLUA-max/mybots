@@ -97,14 +97,23 @@ function getAllOpenRouterKeys() {
 function createOpenRouterClient(apiKey) {
   return new OpenAI({ baseURL:"https://openrouter.ai/api/v1", apiKey, defaultHeaders:{ "HTTP-Referer":"https://discord.com", "X-Title":"VHX Bot Assistant" } });
 }
-async function withFallback(keys, fn) {
-  if (!keys.length) throw new Error("No OpenRouter API keys found.");
+// Model-based fallback — single API key, cycle through models on failure
+async function withFallback(keys, fn, modelList) {
+  const key = (keys && keys.length) ? keys[0] : null;
+  if (!key) throw new Error('No OpenRouter API key found. Set OPENROUTER_API_KEY in your env.');
+  const openai = createOpenRouterClient(key);
+  if (!modelList || modelList.length === 0) return fn(openai, key, null);
   let lastError;
-  for (let i = 0; i < keys.length; i++) {
-    try { if (i > 0) console.log(`🔄 Retrying key #${i+1}`); return await fn(createOpenRouterClient(keys[i]), keys[i]); }
-    catch (e) { console.warn(`⚠️ Key #${i+1} failed: ${e.message}`); lastError = e; }
+  for (let i = 0; i < modelList.length; i++) {
+    try {
+      if (i > 0) console.log('🔄 Model fallback #' + (i+1) + ': ' + modelList[i]);
+      return await fn(openai, key, modelList[i]);
+    } catch (e) {
+      console.warn('⚠️ Model ' + modelList[i] + ' failed: ' + e.message);
+      lastError = e;
+    }
   }
-  throw new Error(`All keys exhausted. Last: ${lastError?.message}`);
+  throw new Error('All ' + modelList.length + ' models exhausted. Last: ' + lastError?.message);
 }
 
 // ─── Model Routing ─────────────────────────────────────────────────────────────
@@ -205,32 +214,41 @@ const SYSTEM_INSTRUCTION = `You are a helpful and neutral AI assistant operating
 
 async function generateAI(messages, systemContext, options = {}) {
   const sysContent = systemContext ? `${SYSTEM_INSTRUCTION}\n\n${systemContext}` : SYSTEM_INSTRUCTION;
-  const keys  = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const model = options.model || await getBestTextModel();
-  console.log(`🤖 Text model: ${model}`);
-  return withFallback(keys, async (openai) => {
-    const msgs = [{ role:"system", content:sysContent }, ...messages.map(m => ({ role:m.role, content:m.content }))];
-    for (let iter = 0; iter < 5; iter++) {
-      const response = await openai.chat.completions.create({ model, messages:msgs, tools:AI_TOOLS, tool_choice:"auto", temperature:0.8 });
-      const msg = response.choices[0].message;
-      if (!msg.tool_calls || !msg.tool_calls.length) return { text: msg.content || "No response.", groundingUrls: [] };
-      msgs.push(msg);
-      for (const tc of msg.tool_calls) {
-        let args = {};
-        try { args = JSON.parse(tc.function.arguments); } catch {}
-        console.log(`🔧 Tool: ${tc.function.name}(${JSON.stringify(args)})`);
-        const result = await dispatchTool(tc.function.name, args);
-        msgs.push({ role:"tool", tool_call_id:tc.id, content:result });
+  const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
+  const modelList = options.model ? [options.model, ...TEXT_MODEL_PRIORITY] : TEXT_MODEL_PRIORITY;
+  const key = keys[0];
+  if (!key) throw new Error("No OpenRouter API key found.");
+  const openai = createOpenRouterClient(key);
+  let lastError;
+  for (const model of modelList) {
+    try {
+      console.log('🤖 Text model: ' + model);
+      const msgs = [{ role:"system", content:sysContent }, ...messages.map(m => ({ role:m.role, content:m.content }))];
+      for (let iter = 0; iter < 5; iter++) {
+        const response = await openai.chat.completions.create({ model, messages:msgs, tools:AI_TOOLS, tool_choice:"auto", temperature:0.8 });
+        const msg = response.choices[0].message;
+        if (!msg.tool_calls || !msg.tool_calls.length) return { text: msg.content || "No response.", groundingUrls: [] };
+        msgs.push(msg);
+        for (const tc of msg.tool_calls) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments); } catch {}
+          console.log('🔧 Tool: ' + tc.function.name + '(' + JSON.stringify(args) + ')');
+          const result = await dispatchTool(tc.function.name, args);
+          msgs.push({ role:"tool", tool_call_id:tc.id, content:result });
+        }
       }
+      return { text:"Reached reasoning limit.", groundingUrls:[] };
+    } catch (e) {
+      console.warn('⚠️ Model ' + model + ' failed: ' + e.message);
+      lastError = e;
     }
-    return { text:"Reached reasoning limit.", groundingUrls:[] };
-  });
+  }
+  throw new Error('All text models exhausted. Last: ' + lastError?.message);
 }
 
 // ─── Code Review ──────────────────────────────────────────────────────────────
 async function generateCodeReview(code, language, options = {}) {
   const keys  = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const model = await getBestCodeModel();
   const sysMsg = [
     "You are an expert code reviewer. Respond with ONLY a raw JSON object, no markdown fences.",
     'Schema: {"issues":[{"severity":"critical"|"moderate"|"minor","line":number|null,"issue":string,"suggestion":string}],"summary":string,"correctedCode":string}',
@@ -239,34 +257,55 @@ async function generateCodeReview(code, language, options = {}) {
     "correctedCode must be the COMPLETE fixed file."
   ].join(" ");
   const userMsg = `Review this ${language||"code"} and return JSON only:\n\`\`\`${language||""}\n${code}\n\`\`\``;
-  return withFallback(keys, async (openai) => {
-    const res = await openai.chat.completions.create({ model, temperature:0.1, messages:[{ role:"system", content:sysMsg },{ role:"user", content:userMsg }] });
-    const raw = res.choices[0]?.message?.content;
-    if (!raw) throw new Error("Model returned empty response.");
-    const cleaned = raw.replace(/^```(?:json)?\n?/i,"").replace(/\n?```$/i,"").trim();
-    let parsed;
-    try { parsed = JSON.parse(cleaned); }
-    catch { const m = cleaned.match(/\{[\s\S]*\}/); if (!m) throw new Error("No JSON found. Preview: "+raw.slice(0,150)); parsed = JSON.parse(m[0]); }
-    if (!parsed.issues)        parsed.issues        = [];
-    if (!parsed.summary)       parsed.summary       = "Review complete.";
-    if (!parsed.correctedCode) parsed.correctedCode = code;
-    return parsed;
-  });
+  const key = keys[0];
+  if (!key) throw new Error("No OpenRouter API key found.");
+  const openai = createOpenRouterClient(key);
+  let lastError;
+  for (const model of CODE_MODEL_PRIORITY) {
+    try {
+      console.log('🔍 Code review model: ' + model);
+      const res = await openai.chat.completions.create({ model, temperature:0.1, messages:[{ role:"system", content:sysMsg },{ role:"user", content:userMsg }] });
+      const raw = res.choices[0]?.message?.content;
+      if (!raw) throw new Error("Model returned empty response.");
+      const cleaned = raw.replace(/^```(?:json)?\n?/i,"").replace(/\n?```$/i,"").trim();
+      let parsed;
+      try { parsed = JSON.parse(cleaned); }
+      catch { const m = cleaned.match(/\{[\s\S]*\}/); if (!m) throw new Error("No JSON. Preview: "+raw.slice(0,150)); parsed = JSON.parse(m[0]); }
+      if (!parsed.issues)        parsed.issues        = [];
+      if (!parsed.summary)       parsed.summary       = "Review complete.";
+      if (!parsed.correctedCode) parsed.correctedCode = code;
+      return parsed;
+    } catch (e) {
+      console.warn('⚠️ Code review model ' + model + ' failed: ' + e.message);
+      lastError = e;
+    }
+  }
+  throw new Error('All code review models exhausted. Last: ' + lastError?.message);
 }
 
 // ─── Code Fix ─────────────────────────────────────────────────────────────────
 async function generateCodeFix(code, language, options = {}) {
   const keys  = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const model = await getBestCodeModel();
-  return withFallback(keys, async (openai) => {
-    const res = await openai.chat.completions.create({ model, temperature:0.1, messages:[
-      { role:"system", content:"You are a code fixing assistant. Output ONLY raw fixed code. No markdown fences, no explanation." },
-      { role:"user",   content:`Fix ALL bugs in this ${language||"code"}. Return only the fixed code.\n\n${code}` }
-    ]});
-    let r = res.choices[0]?.message?.content || "";
-    if (!r) throw new Error("Empty response.");
-    return r.replace(/^```[\w]*\n?/i,"").replace(/\n?```$/i,"").trim();
-  });
+  const key = keys[0];
+  if (!key) throw new Error("No OpenRouter API key found.");
+  const openai = createOpenRouterClient(key);
+  let lastError;
+  for (const model of CODE_MODEL_PRIORITY) {
+    try {
+      console.log('🔧 Code fix model: ' + model);
+      const res = await openai.chat.completions.create({ model, temperature:0.1, messages:[
+        { role:"system", content:"You are a code fixing assistant. Output ONLY raw fixed code. No markdown fences, no explanation." },
+        { role:"user",   content:`Fix ALL bugs in this ${language||"code"}. Return only the fixed code.\n\n${code}` }
+      ]});
+      let r = res.choices[0]?.message?.content || "";
+      if (!r) throw new Error("Empty response.");
+      return r.replace(/^```[\w]*\n?/i,"").replace(/\n?```$/i,"").trim();
+    } catch (e) {
+      console.warn('⚠️ Code fix model ' + model + ' failed: ' + e.message);
+      lastError = e;
+    }
+  }
+  throw new Error('All code fix models exhausted. Last: ' + lastError?.message);
 }
 
 // ─── Image / Vision / TTS / Video ─────────────────────────────────────────────
