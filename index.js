@@ -25,7 +25,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // server.ts
 var dotenv2 = __toESM(require("dotenv"));
 var import_express = __toESM(require("express"));
-var import_express_session = __toESM(require("express-session"));
+
 
 // bot/bot.ts
 var dotenv = __toESM(require("dotenv"));
@@ -34,11 +34,12 @@ var import_discord = require("discord.js");
 // bot/gemini.ts
 var import_openai = __toESM(require("openai"));
 var import_axios = __toESM(require("axios"));
-var SYSTEM_INSTRUCTION = `You are a helpful and neutral AI assistant operating within a Discord environment. 
-Provide clear, concise, and accurate information. 
-Always be aware that you are interacting with users in Discord, so you can use Discord formatting (like markdown, embeds, etc.) where appropriate.
-DO NOT wrap your entire response in a code block unless the user specifically asks for code. Use normal text for explanations and only use code blocks (\`\`\`) for actual code snippets.
-If the user asks for information that requires up-to-date data, use your search tools if available.`;
+var SYSTEM_INSTRUCTION = `You are a helpful and neutral AI assistant operating within a Discord server. You are fully aware that you are on Discord and should behave accordingly.
+- Use Discord markdown formatting where appropriate (bold, italics, code blocks, etc.)
+- Keep responses concise and readable for a chat environment
+- Do NOT wrap your entire response in a code block unless the user specifically asks for code. Use normal text for explanations and only use code blocks (\`\`\`) for actual code snippets
+- You may use Discord-style mentions, emojis, and formatting naturally
+- If the user asks for information that requires up-to-date data, use your search tools if available`;
 var modelCache = {
   text: [],
   image: [],
@@ -48,45 +49,31 @@ var modelCache = {
 };
 var CACHE_TTL_MS = 60 * 60 * 1e3;
 var TEXT_MODEL_PRIORITY = [
-  "google/gemini-2.0-flash-001",
-  "google/gemini-2.5-flash",
-  "google/gemini-2.5-pro",
-  "anthropic/claude-3.5-haiku",
-  "anthropic/claude-3-haiku",
-  "anthropic/claude-3.5-sonnet",
-  "meta-llama/llama-3.3-70b-instruct",
-  "meta-llama/llama-3.1-8b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "deepseek/deepseek-chat",
-  "qwen/qwen-2.5-72b-instruct"
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "stepfun/step-3.5-flash:free",
+  "minimax/minimax-m2.5:free"
 ];
 var CODE_MODEL_PRIORITY = [
-  "anthropic/claude-3.5-sonnet",
-  "anthropic/claude-3.7-sonnet",
-  "google/gemini-2.5-pro",
-  "deepseek/deepseek-r1",
-  "deepseek/deepseek-coder",
-  "google/gemini-2.0-flash-001",
-  "qwen/qwen-2.5-coder-32b-instruct",
-  "meta-llama/llama-3.3-70b-instruct"
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "stepfun/step-3.5-flash:free",
+  "minimax/minimax-m2.5:free"
 ];
 var IMAGE_MODEL_PRIORITY = [
-  "black-forest-labs/flux-schnell",
-  "black-forest-labs/flux-dev",
-  "black-forest-labs/flux-1.1-pro",
-  "stabilityai/stable-diffusion-xl",
-  "stabilityai/stable-diffusion-3-medium",
-  "openai/dall-e-3"
+  "sourceful/riverflow-v2-pro",
+  "sourceful/riverflow-v2-fast",
+  "black-forest-labs/flux.2-klein-4b"
+];
+var AUDIO_MODEL_PRIORITY = [
+  "bytedance/seedance-1-5-pro",
+  "openai/sora-2-pro",
+  "google/veo-3.1"
+];
+var VIDEO_MODEL_PRIORITY = [
+  "bytedance/seedance-1-5-pro",
+  "openai/sora-2-pro"
 ];
 var VISION_MODEL_PRIORITY = [
-  "google/gemini-2.0-flash-001",
-  "google/gemini-2.5-flash",
-  "anthropic/claude-3.5-sonnet",
-  "anthropic/claude-3-haiku",
-  "openai/gpt-4o",
-  "openai/gpt-4o-mini",
-  "meta-llama/llama-3.2-90b-vision-instruct",
-  "meta-llama/llama-3.2-11b-vision-instruct:free"
+  "nvidia/nemotron-nano-12b-v2-vl:free"
 ];
 async function fetchModelCatalog() {
   const now = Date.now();
@@ -138,6 +125,14 @@ async function getBestImageModel(preferred) {
 async function getBestVisionModel() {
   await fetchModelCatalog();
   return pickBestModel(VISION_MODEL_PRIORITY, modelCache.vision, "google/gemini-2.0-flash-001");
+}
+async function getBestAudioModel() {
+  await fetchModelCatalog();
+  return pickBestModel(AUDIO_MODEL_PRIORITY, modelCache.all, "bytedance/seedance-1-5-pro");
+}
+async function getBestVideoModel() {
+  await fetchModelCatalog();
+  return pickBestModel(VIDEO_MODEL_PRIORITY, modelCache.all, "bytedance/seedance-1-5-pro");
 }
 function getAllOpenRouterKeys() {
   const keys = [];
@@ -1052,25 +1047,30 @@ ${data.correctedCode}
     }
   }
 });
+var VHXBOT_TRIGGER_WORDS = (process.env.VHXBOT_TRIGGER_WORDS || "!vhx,!bot,!ask").split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
 async function handleChatbotMessage(message, botClient) {
   if (message.author.bot) return;
   const botId = botClient.user?.id;
   const isMentioned = botId ? message.mentions.has(botId) : false;
   const isDM = !message.guild;
   const isChatChannel = CHAT_CHANNEL_ID && message.channelId === CHAT_CHANNEL_ID;
-  if (isMentioned || isDM || isChatChannel) {
+  const isMainBot = botClient === client;
+  const msgLower = message.content.toLowerCase();
+  const hasTrigger = VHXBOT_TRIGGER_WORDS.some((w) => msgLower.startsWith(w));
+  if (isMainBot && !isMentioned && !isDM && !hasTrigger) return;
+  if (isMentioned || isDM || isChatChannel || hasTrigger) {
     console.log(`\u{1F916} Chatbot triggered by ${message.author.tag} in ${message.guild ? message.guild.name : "DM"}`);
     try {
       if ("sendTyping" in message.channel) {
         await message.channel.sendTyping();
       }
       const mentionRegex = new RegExp(`<@!?${botClient.user?.id}>`, "g");
-      const prompt = message.content.replace(mentionRegex, "").trim();
+      const triggerRegex = new RegExp(`^(${VHXBOT_TRIGGER_WORDS.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*`, "i");
+      const prompt = message.content.replace(mentionRegex, "").replace(triggerRegex, "").trim();
       if (!prompt && isMentioned) {
         return await message.reply("Hello! How can I help you today?");
       }
       if (!prompt) return;
-      const isMainBot = botClient === client;
       const snapshot = isMainBot ? await getDatabaseSnapshot() : void 0;
       const aiOptions = isMainBot ? { provider: VHXBOT_PROVIDER, apiKey: VHXBOT_API_KEY } : { provider: VHXAI_PROVIDER, apiKey: VHXAI_API_KEY };
       let history = userHistory.get(message.author.id) || [];
@@ -1152,34 +1152,20 @@ var port = 3e3;
 app.use(import_express.default.json());
 app.use(import_express.default.urlencoded({ extended: true }));
 app.set("trust proxy", 1);
-app.use((0, import_express_session.default)({
-  secret: "vhx-control-secret",
-  resave: false,
-  saveUninitialized: true,
-  cookie: {
-    secure: true,
-    // Required for SameSite=None
-    sameSite: "none",
-    // Required for cross-origin iframe
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1e3
-    // 24 hours
-  }
-}));
 app.post("/api/commands", (req, res) => {
   const { name, response } = req.body;
-  if (!name || !response) return res.status(400).send("Missing name or response");
-  addCustomCommand(name, response, "Dashboard Admin");
-  res.redirect("/");
+  if (!name || !response) return res.status(400).json({ error: "Missing name or response" });
+  addCustomCommand(name, response, "API");
+  res.json({ ok: true });
 });
 app.post("/api/commands/delete", (req, res) => {
   const { name } = req.body;
   removeCustomCommand(name);
-  res.redirect("/");
+  res.json({ ok: true });
 });
 app.post("/api/logs/clear", (req, res) => {
   commandLogs.length = 0;
-  res.redirect("/");
+  res.json({ ok: true });
 });
 app.get("/api/analytics", async (req, res) => {
   try {
@@ -1235,468 +1221,7 @@ app.post("/api/test-command", async (req, res) => {
   }
 });
 app.get("/", (req, res) => {
-  const commands2 = Array.from(customCommands.values());
-  const now = /* @__PURE__ */ new Date();
-  const lastVisit = req.session.lastVisit;
-  req.session.lastVisit = now.toISOString();
-  const logsHtml = commandLogs.map((log) => `
-    <div class="log-entry">
-      <div class="log-header">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          ${log.avatar ? `<img src="${log.avatar}" style="width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ink);" />` : ""}
-          <span class="log-user">${log.user}</span>
-        </div>
-        <span class="log-time">${new Date(log.timestamp).toLocaleTimeString()}</span>
-      </div>
-      <div class="log-command">${log.command}</div>
-      <div class="log-response">${log.response}</div>
-    </div>
-  `).join("");
-  const commandsHtml = commands2.map((cmd) => `
-    <div class="command-item">
-      <div>
-        <div style="font-weight: bold; color: #fff;">/${cmd.name}</div>
-        <div style="font-size: 0.8rem; opacity: 0.7;">${cmd.response}</div>
-      </div>
-      <form action="/api/commands/delete" method="POST" style="margin: 0;">
-        <input type="hidden" name="name" value="${cmd.name}">
-        <button type="submit" class="btn-delete">DELETE</button>
-      </form>
-    </div>
-  `).join("");
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>VHX CONTROL CENTER</title>
-      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-      <style>
-        :root {
-          --bg: #050505;
-          --ink: #00ff41;
-          --line: #1a1a1a;
-          --f-mono: 'JetBrains Mono', 'Fira Code', monospace;
-        }
-        body {
-          font-family: var(--f-mono);
-          background-color: var(--bg);
-          color: var(--ink);
-          margin: 0;
-          padding: 1rem;
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 1rem;
-          min-height: 100vh;
-          box-sizing: border-box;
-        }
-        @media (min-width: 1024px) {
-          body {
-            grid-template-columns: 350px 1fr;
-            padding: 2rem;
-            height: 100vh;
-            overflow: hidden;
-          }
-        }
-        .sidebar {
-          border: 1px solid var(--ink);
-          padding: 1.5rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-          background: rgba(0, 255, 65, 0.02);
-          overflow-y: auto;
-        }
-        .main {
-          border: 1px solid var(--ink);
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          background: rgba(0, 255, 65, 0.02);
-          min-height: 500px;
-        }
-        .status-badge {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          font-weight: bold;
-          font-size: 0.8rem;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          padding: 0.5rem;
-          border: 1px solid rgba(0, 255, 65, 0.2);
-        }
-        .dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-        }
-        .dot.online {
-          background: var(--ink);
-          box-shadow: 0 0 10px var(--ink);
-          animation: pulse 2s infinite;
-        }
-        .dot.offline {
-          background: #ff4444;
-          box-shadow: 0 0 10px #ff4444;
-        }
-        @keyframes pulse {
-          0% { opacity: 0.4; }
-          50% { opacity: 1; }
-          100% { opacity: 0.4; }
-        }
-        .meta-label {
-          font-size: 0.7rem;
-          opacity: 0.5;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        .stat-value {
-          font-size: 1.5rem;
-          margin-top: 0.25rem;
-        }
-        .log-container {
-          flex: 1;
-          overflow-y: auto;
-          padding: 1.5rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .log-container::-webkit-scrollbar, .sidebar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .log-container::-webkit-scrollbar-thumb, .sidebar::-webkit-scrollbar-thumb {
-          background: var(--ink);
-        }
-        .log-entry {
-          border-left: 2px solid var(--ink);
-          padding-left: 1rem;
-          padding-bottom: 0.5rem;
-          border-bottom: 1px solid rgba(0, 255, 65, 0.1);
-        }
-        .log-header {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.75rem;
-          margin-bottom: 0.5rem;
-        }
-        .log-user { font-weight: bold; color: #fff; }
-        .log-time { opacity: 0.5; }
-        .log-command { color: #fff; font-size: 0.9rem; margin-bottom: 0.25rem; }
-        .log-response { font-size: 0.8rem; opacity: 0.7; font-style: italic; }
-        .header {
-          padding: 1rem 1.5rem;
-          border-bottom: 1px solid var(--ink);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        h1 { margin: 0; font-size: 1.2rem; letter-spacing: 4px; }
-        
-        /* Custom Command Styles */
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-          margin-bottom: 1rem;
-        }
-        input, textarea {
-          background: #000;
-          border: 1px solid var(--ink);
-          color: var(--ink);
-          padding: 0.5rem;
-          font-family: var(--f-mono);
-          font-size: 0.8rem;
-          width: 100%;
-          box-sizing: border-box;
-        }
-        .btn-add, .btn-action {
-          background: var(--ink);
-          color: #000;
-          border: none;
-          padding: 0.5rem;
-          font-weight: bold;
-          cursor: pointer;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          font-family: var(--f-mono);
-          width: 100%;
-          margin-top: 0.5rem;
-        }
-        .btn-action.secondary {
-          background: transparent;
-          color: var(--ink);
-          border: 1px solid var(--ink);
-        }
-        .btn-action:hover {
-          filter: brightness(1.2);
-        }
-        .command-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.5rem;
-          border: 1px dashed rgba(0, 255, 65, 0.3);
-          margin-bottom: 0.5rem;
-        }
-        .btn-delete {
-          background: transparent;
-          color: #ff4444;
-          border: 1px solid #ff4444;
-          font-size: 0.6rem;
-          padding: 2px 4px;
-          cursor: pointer;
-        }
-        #tester-result {
-          margin-top: 1rem;
-          padding: 0.5rem;
-          border: 1px dashed var(--ink);
-          font-size: 0.7rem;
-          max-height: 200px;
-          overflow-y: auto;
-          white-space: pre-wrap;
-          display: none;
-        }
-        .analytics-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 1.5rem;
-          padding: 1.5rem;
-          border-bottom: 1px solid var(--ink);
-        }
-        .chart-card {
-          border: 1px solid rgba(0, 255, 65, 0.2);
-          padding: 1rem;
-          background: rgba(0, 255, 65, 0.01);
-        }
-        .chart-title {
-          font-size: 0.7rem;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-bottom: 1rem;
-          opacity: 0.7;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="sidebar">
-        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-          <div class="status-badge">
-            <div class="dot ${botStatus.main === "ONLINE" ? "online" : "offline"}"></div>
-            MAIN BOT: ${botStatus.main}
-          </div>
-          <div class="status-badge">
-            <div class="dot ${botStatus.vhxAI === "ONLINE" ? "online" : "offline"}"></div>
-            vhxAI BOT: ${botStatus.vhxAI}
-          </div>
-          <div class="status-badge">
-            <div class="dot ${botStatus.slashCommands === "ACTIVE" ? "online" : "offline"}" style="${botStatus.slashCommands === "ACTIVE" ? "background: #3b82f6; box-shadow: 0 0 10px #3b82f6;" : ""}"></div>
-            SLASH CMDS: ${botStatus.slashCommands}
-          </div>
-        </div>
-
-        <div style="border-top: 1px solid var(--ink); padding-top: 1rem;">
-          <div class="meta-label">Command Tester</div>
-          <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <input type="text" id="tester-cmd" placeholder="command_name (e.g. stats)">
-            <textarea id="tester-opts" placeholder='{"question": "How are you?"}' rows="2"></textarea>
-            <button onclick="testCommand()" id="tester-btn" class="btn-action">RUN TEST</button>
-            <div id="tester-result"></div>
-          </div>
-        </div>
-
-        <div style="border-top: 1px solid var(--ink); padding-top: 1rem;">
-          <div class="meta-label">System Actions</div>
-          <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
-            <button onclick="window.location.reload()" class="btn-action secondary">REFRESH DASHBOARD</button>
-            <form action="/api/logs/clear" method="POST" style="margin: 0;">
-              <button type="submit" class="btn-action secondary" style="color: #ff4444; border-color: #ff4444;">CLEAR COMMAND LOGS</button>
-            </form>
-          </div>
-        </div>
-        
-        <div style="border-top: 1px solid var(--ink); padding-top: 1rem;">
-          <div class="meta-label">Add Custom Command</div>
-          <form action="/api/commands" method="POST" style="margin-top: 0.5rem;">
-            <div class="form-group">
-              <input type="text" name="name" placeholder="command_name" required>
-              <textarea name="response" placeholder="Response text..." rows="3" required></textarea>
-              <button type="submit" class="btn-add">DEPLOY COMMAND</button>
-            </div>
-          </form>
-        </div>
-
-        <div style="border-top: 1px solid var(--ink); padding-top: 1rem;">
-          <div class="meta-label">Active Custom Commands</div>
-          <div style="margin-top: 0.5rem;">
-            ${commandsHtml || '<div class="meta-label">No custom commands</div>'}
-          </div>
-        </div>
-
-        <div style="margin-top: auto; border-top: 1px solid var(--ink); padding-top: 1rem;">
-          <div class="meta-label">VHX CONTROL v2.5</div>
-          <div class="meta-label">API: STABLE</div>
-          <div class="meta-label" style="margin-top: 0.5rem; color: #3b82f6; cursor: pointer;" onclick="window.open('${process.env.APP_URL}', '_blank')">PUBLIC DOMAIN: ACTIVE</div>
-          ${lastVisit ? `<div class="meta-label" style="margin-top: 0.5rem; color: #fff;">LAST VISIT: ${new Date(lastVisit).toLocaleTimeString()}</div>` : ""}
-        </div>
-      </div>
-      <div class="main">
-        <div class="header">
-          <h1>ANALYTICS_DASHBOARD.EXE</h1>
-          <div class="meta-label">Real-time monitoring enabled</div>
-        </div>
-        
-        <div class="analytics-grid">
-          <div class="chart-card">
-            <div class="chart-title">Command Usage (Last 24h)</div>
-            <canvas id="usageChart" height="150"></canvas>
-          </div>
-          <div class="chart-card">
-            <div class="chart-title">Command Distribution</div>
-            <canvas id="distributionChart" height="150"></canvas>
-          </div>
-          <div class="chart-card">
-            <div class="chart-title">Top Games (Executions)</div>
-            <canvas id="gamesChart" height="150"></canvas>
-          </div>
-        </div>
-
-        <div class="header" style="border-top: 1px solid var(--ink);">
-          <h1>COMMAND_FEED.LOG</h1>
-        </div>
-        <div class="log-container">
-          ${logsHtml || '<div class="meta-label">Waiting for incoming data...</div>'}
-        </div>
-      </div>
-
-      <script>
-        async function loadAnalytics() {
-          try {
-            const res = await fetch('/api/analytics');
-            const data = await res.json();
-            
-            // 1. Usage Chart
-            new Chart(document.getElementById('usageChart'), {
-              type: 'line',
-              data: {
-                labels: data.hourlyUsage.map(u => u.hour),
-                datasets: [{
-                  label: 'Commands',
-                  data: data.hourlyUsage.map(u => u.count),
-                  borderColor: '#00ff41',
-                  backgroundColor: 'rgba(0, 255, 65, 0.1)',
-                  fill: true,
-                  tension: 0.4
-                }]
-              },
-              options: {
-                responsive: true,
-                scales: {
-                  y: { beginAtZero: true, grid: { color: 'rgba(0, 255, 65, 0.1)' }, ticks: { color: '#00ff41' } },
-                  x: { grid: { color: 'rgba(0, 255, 65, 0.1)' }, ticks: { color: '#00ff41' } }
-                },
-                plugins: { legend: { display: false } }
-              }
-            });
-
-            // 2. Distribution Chart
-            new Chart(document.getElementById('distributionChart'), {
-              type: 'doughnut',
-              data: {
-                labels: Object.keys(data.commandCounts),
-                datasets: [{
-                  data: Object.values(data.commandCounts),
-                  backgroundColor: [
-                    '#00ff41', '#00cc33', '#009926', '#00661a', '#00330d'
-                  ],
-                  borderWidth: 1,
-                  borderColor: '#050505'
-                }]
-              },
-              options: {
-                responsive: true,
-                plugins: { legend: { position: 'right', labels: { color: '#00ff41', font: { family: 'JetBrains Mono', size: 10 } } } }
-              }
-            });
-
-            // 3. Games Chart
-            new Chart(document.getElementById('gamesChart'), {
-              type: 'bar',
-              data: {
-                labels: data.gameExecs.map(g => g.game_name),
-                datasets: [{
-                  label: 'Executions',
-                  data: data.gameExecs.map(g => g.count),
-                  backgroundColor: '#00ff41'
-                }]
-              },
-              options: {
-                responsive: true,
-                indexAxis: 'y',
-                scales: {
-                  x: { beginAtZero: true, grid: { color: 'rgba(0, 255, 65, 0.1)' }, ticks: { color: '#00ff41' } },
-                  y: { grid: { display: false }, ticks: { color: '#00ff41' } }
-                },
-                plugins: { legend: { display: false } }
-              }
-            });
-
-          } catch (e) {
-            console.error('Failed to load analytics:', e);
-          }
-        }
-
-        loadAnalytics();
-
-        async function testCommand() {
-          const cmd = document.getElementById('tester-cmd').value;
-          const optsRaw = document.getElementById('tester-opts').value;
-          const btn = document.getElementById('tester-btn');
-          const resultDiv = document.getElementById('tester-result');
-
-          if (!cmd) return alert('Enter a command name');
-
-          let opts = {};
-          try {
-            if (optsRaw) opts = JSON.parse(optsRaw);
-          } catch (e) {
-            return alert('Invalid JSON in options');
-          }
-
-          btn.disabled = true;
-          btn.innerText = 'EXECUTING...';
-          resultDiv.style.display = 'none';
-
-          try {
-            const res = await fetch('/api/test-command', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ command: cmd, options: opts })
-            });
-            const data = await res.json();
-            
-            resultDiv.style.display = 'block';
-            if (data.type === 'text') {
-              resultDiv.innerText = data.content;
-            } else if (data.type === 'embed') {
-              resultDiv.innerText = JSON.stringify(data.content, null, 2);
-            } else {
-              resultDiv.innerText = 'Error: ' + (data.error || 'Unknown error');
-            }
-          } catch (e) {
-            resultDiv.style.display = 'block';
-            resultDiv.innerText = 'Network error: ' + e.message;
-          } finally {
-            btn.disabled = false;
-            btn.innerText = 'RUN TEST';
-          }
-        }
-      </script>
-    </body>
-    </html>
-  `);
+  res.json({ status: "ok", uptime: process.uptime() });
 });
 app.listen(port, () => {
   console.log(`\u{1F680} Status server running at http://localhost:${port}`);
