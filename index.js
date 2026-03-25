@@ -14,10 +14,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
@@ -38,7 +34,7 @@ var SYSTEM_INSTRUCTION = `You are a helpful and neutral AI assistant operating w
 - Use Discord markdown formatting where appropriate (bold, italics, code blocks, etc.)
 - Keep responses concise and readable for a chat environment
 - Do NOT wrap your entire response in a code block unless the user specifically asks for code. Use normal text for explanations and only use code blocks (\`\`\`) for actual code snippets
-- You may use Discord-style mentions, emojis, and formatting naturally
+- You may use Discord-style mentions, and formatting naturally
 - If the user asks for information that requires up-to-date data, use your search tools if available`;
 var modelCache = {
   text: [],
