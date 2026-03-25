@@ -61,7 +61,7 @@ var CODE_MODEL_PRIORITY = [
   "minimax/minimax-m2.5:free"
 ];
 var IMAGE_MODEL_PRIORITY = [
-  "sourceful/riverflow-v2-pro",
+  "google/gemini-3.1-flash-image-preview",
   "sourceful/riverflow-v2-fast",
   "black-forest-labs/flux.2-klein-4b"
 ];
