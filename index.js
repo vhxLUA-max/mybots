@@ -61,18 +61,17 @@ var CODE_MODEL_PRIORITY = [
   "minimax/minimax-m2.5:free"
 ];
 var IMAGE_MODEL_PRIORITY = [
-  "google/gemini-3.1-flash-image-preview",
-  "sourceful/riverflow-v2-fast",
-  "black-forest-labs/flux.2-klein-4b"
+  "black-forest-labs/flux-1-schnell",
+  "black-forest-labs/flux-1-pro",
+  "stabilityai/stable-diffusion-3-medium"
 ];
 var AUDIO_MODEL_PRIORITY = [
-  "bytedance/seedance-1-5-pro",
-  "openai/sora-2-pro",
-  "google/veo-3.1"
+  "openai/tts-1",
+  "openai/tts-1-hd"
 ];
 var VIDEO_MODEL_PRIORITY = [
-  "bytedance/seedance-1-5-pro",
-  "openai/sora-2-pro"
+  "minimax/video-01",
+  "wan-ai/wan2.1-t2v-turbo"
 ];
 var VISION_MODEL_PRIORITY = [
   "nvidia/nemotron-nano-12b-v2-vl:free"
@@ -209,17 +208,38 @@ async function generateImage(prompt, options = {}) {
   console.log(`\u{1F3A8} Image model selected: ${model}`);
   return withFallback(keys, async (openai, key) => {
     console.log(`\u{1F511} Using key: ${key.substring(0, 8)}...`);
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }]
-    });
-    const content = response.choices?.[0]?.message?.content;
-    if (!content) throw new Error("OpenRouter returned no image content.");
-    const urlMatch = content.match(/https?:\/\/\S+/);
-    const imageUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : content.trim();
-    if (!imageUrl.startsWith("http")) throw new Error("OpenRouter did not return a valid image URL.");
-    console.log(`\u2705 Image generated: ${imageUrl}`);
-    return imageUrl;
+    try {
+      // Use the proper images/generations endpoint
+      const imgRes = await import_axios.default.post(
+        "https://openrouter.ai/api/v1/images/generations",
+        { model, prompt, n: 1, size: "1024x1024" },
+        {
+          headers: {
+            "Authorization": `Bearer ${key}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://discord.com",
+            "X-Title": "VHX Bot Assistant"
+          }
+        }
+      );
+      const imageUrl = imgRes.data?.data?.[0]?.url;
+      if (!imageUrl) throw new Error("No image URL in response.");
+      console.log(`\u2705 Image generated: ${imageUrl}`);
+      return imageUrl;
+    } catch (imgErr) {
+      console.warn(`\u26A0\uFE0F images/generations failed (${imgErr.message}), trying chat completions...`);
+      // Fallback: some models return image URLs inline in chat
+      const chatRes = await openai.chat.completions.create({
+        model,
+        messages: [{ role: "user", content: `Generate an image of: ${prompt}` }]
+      });
+      const content = chatRes.choices?.[0]?.message?.content || "";
+      const urlMatch = content.match(/https?:\/\/\S+/);
+      const imageUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : null;
+      if (!imageUrl) throw new Error("OpenRouter did not return a valid image URL.");
+      console.log(`\u2705 Image generated via chat: ${imageUrl}`);
+      return imageUrl;
+    }
   });
 }
 async function generateVision(prompt, imageBase64, mimeType, options = {}) {
@@ -247,24 +267,40 @@ async function generateVision(prompt, imageBase64, mimeType, options = {}) {
   });
 }
 async function generateTTS(text, options = {}) {
+  const voice = options.voice || "alloy";
+  const validVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+  const resolvedVoice = validVoices.includes(voice.toLowerCase()) ? voice.toLowerCase() : "alloy";
+  // Try OpenAI TTS directly if OPENAI_API_KEY is set
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    console.log(`\uD83D\uDDE3\uFE0F Using OpenAI TTS (voice: ${resolvedVoice})`);
+    try {
+      const ttsRes = await import_axios.default.post(
+        "https://api.openai.com/v1/audio/speech",
+        { model: "tts-1", input: text, voice: resolvedVoice },
+        {
+          headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+          responseType: "arraybuffer"
+        }
+      );
+      const base64Audio = Buffer.from(ttsRes.data).toString("base64");
+      console.log(`\u2705 TTS audio generated via OpenAI (${base64Audio.length} bytes)`);
+      return { base64: base64Audio, model: "openai/tts-1" };
+    } catch (err) {
+      console.warn(`\u26A0\uFE0F OpenAI TTS failed: ${err.message}. Falling back to OpenRouter...`);
+    }
+  }
+  // Fallback: try OpenRouter audio models
   const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const voice = options.voice || "Kore";
   const model = await getBestAudioModel();
-  console.log(`\u{1F5E3}\uFE0F Audio model selected: ${model} (Voice: ${voice})`);
+  console.log(`\uD83D\uDDE3\uFE0F Audio model selected: ${model} (Voice: ${resolvedVoice})`);
   return withFallback(keys, async (openai, key) => {
-    console.log(`\u{1F511} Using key: ${key.substring(0, 8)}...`);
-    // Use chat completions with a TTS prompt — OpenRouter audio models accept this format
+    console.log(`\uD83D\uDD11 Using key: ${key.substring(0, 8)}...`);
     const response = await openai.chat.completions.create({
       model,
-      messages: [
-        {
-          role: "user",
-          content: `Please speak the following text aloud in voice "${voice}": ${text}`
-        }
-      ]
+      messages: [{ role: "user", content: `Please speak the following text aloud in voice "${resolvedVoice}": ${text}` }]
     });
     const content = response.choices?.[0]?.message?.content || "";
-    // If the model returns a URL to an audio file, fetch it and return base64
     const urlMatch = content.match(/https?:\/\/\S+/);
     if (urlMatch) {
       const audioUrl = urlMatch[0].replace(/[)>.,]+$/, "");
@@ -273,7 +309,6 @@ async function generateTTS(text, options = {}) {
       console.log(`\u2705 Audio fetched from URL (${base64Audio.length} bytes)`);
       return { base64: base64Audio, model };
     }
-    // Fallback: return the text response so Discord at least gets something
     console.log(`\u26A0\uFE0F Audio model returned text instead of audio URL`);
     return { text: content, model };
   });
@@ -856,7 +891,7 @@ ${analysis}`).setThumbnail(imageUrl).setColor(5793266);
     }
     if (commandName === "speak") {
       const text = options.text;
-      const voice = options.voice || "Kore";
+      const voice = options.voice || "alloy";
       if (!text) return "\u274C Missing text.";
       try {
         const ttsResult = await generateTTS(text, { apiKey: VHXBOT_API_KEY, voice });
@@ -880,22 +915,45 @@ ${analysis}`).setThumbnail(imageUrl).setColor(5793266);
       try {
         const model = await getBestVideoModel();
         const keys = VHXBOT_API_KEY ? [VHXBOT_API_KEY, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-        const openai = createOpenRouterClient(keys[0]);
-        const response = await openai.chat.completions.create({
-          model,
-          messages: [{ role: "user", content: prompt }]
-        });
-        const content2 = response.choices?.[0]?.message?.content || "";
-        const urlMatch = content2.match(/https?:\/\/\S+/);
-        const videoUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : null;
-        if (videoUrl) {
-          return new import_discord.EmbedBuilder()
-            .setTitle("AI Video Generation")
-            .setDescription(`**Prompt:** ${prompt}\n**Model:** ${model}\n**Video:** [Click to view](${videoUrl})`)
-            .setColor(5793266)
-            .setFooter({ text: "Powered by OpenRouter" });
+        const key = keys[0];
+        // Try OpenRouter video generation endpoint
+        let videoUrl = null;
+        try {
+          const vidRes = await import_axios.default.post(
+            "https://openrouter.ai/api/v1/images/generations",
+            { model, prompt, n: 1 },
+            {
+              headers: {
+                "Authorization": `Bearer ${key}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://discord.com",
+                "X-Title": "VHX Bot Assistant"
+              }
+            }
+          );
+          videoUrl = vidRes.data?.data?.[0]?.url || null;
+        } catch (vidErr) {
+          console.warn(`\u26A0\uFE0F Video generations endpoint failed: ${vidErr.message}`);
         }
-        return `\u{1F3A5} **Model:** ${model}\n${content2}`;
+        // Fallback to chat completions
+        if (!videoUrl) {
+          const openai = createOpenRouterClient(key);
+          const response = await openai.chat.completions.create({
+            model,
+            messages: [{ role: "user", content: prompt }]
+          });
+          const content2 = response.choices?.[0]?.message?.content || "";
+          const urlMatch = content2.match(/https?:\/\/\S+/);
+          videoUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : null;
+          if (!videoUrl) {
+            return `\uD83C\uDFA5 **Model:** ${model}\n\nVideo generation is not yet supported for this model on OpenRouter. Try a different prompt or check back later.\n\n**Raw response:** ${content2}`;
+          }
+        }
+        return new import_discord.EmbedBuilder()
+          .setTitle("AI Video Generation")
+          .setDescription(`**Prompt:** ${prompt}\n**Model:** ${model}\n**Video:** [Click to view](${videoUrl})`)
+          .setColor(5793266)
+          .setFooter({ text: "Powered by OpenRouter" });
       } catch (err) {
         return `\u274C **Video Error:** ${err.message}`;
       }
