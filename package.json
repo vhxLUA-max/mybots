@@ -1,0 +1,18 @@
+{
+  "name": "vhxbot",
+  "version": "1.0.0",
+  "description": "VHX Discord Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.0",
+    "axios": "^1.13.6",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "openai": "^6.32.0"
+  }
+}
