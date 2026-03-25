@@ -44,6 +44,8 @@ var modelCache = {
   text: [],
   image: [],
   vision: [],
+  audio: [],
+  video: [],
   all: [],
   fetchedAt: 0
 };
@@ -80,23 +82,26 @@ async function fetchModelCatalog() {
   if (now - modelCache.fetchedAt < CACHE_TTL_MS && modelCache.all.length > 0) return;
   console.log("\u{1F4CB} Fetching OpenRouter model catalog...");
   try {
-    const [allRes, imageRes] = await Promise.all([
-      import_axios.default.get("https://openrouter.ai/api/v1/models?output_modalities=all"),
-      import_axios.default.get("https://openrouter.ai/api/v1/models?output_modalities=image")
-    ]);
+    const allRes = await import_axios.default.get("https://openrouter.ai/api/v1/models");
     modelCache.all = allRes.data.data || [];
-    modelCache.image = imageRes.data.data || [];
+    const allIds = new Set(modelCache.all.map((m) => m.id));
+    // Text: must output text and not take image input
     modelCache.text = modelCache.all.filter((m) => {
       const out = m.architecture?.output_modalities || [];
       const inp = m.architecture?.input_modalities || [];
       return out.includes("text") && !out.includes("image") && !inp.includes("image");
     });
-    modelCache.vision = modelCache.all.filter((m) => {
-      const inp = m.architecture?.input_modalities || [];
-      return inp.includes("image");
-    });
+    // Image: use priority list directly — bypass modality filter since OpenRouter catalog
+    // does not always tag newer image models correctly
+    modelCache.image = IMAGE_MODEL_PRIORITY.map((id) => ({ id }));
+    // Vision: use priority list directly — same reason
+    modelCache.vision = VISION_MODEL_PRIORITY.map((id) => ({ id }));
+    // Audio: use priority list directly
+    modelCache.audio = AUDIO_MODEL_PRIORITY.map((id) => ({ id }));
+    // Video: use priority list directly
+    modelCache.video = VIDEO_MODEL_PRIORITY.map((id) => ({ id }));
     modelCache.fetchedAt = now;
-    console.log(`\u2705 Model catalog loaded \u2014 text: ${modelCache.text.length}, image: ${modelCache.image.length}, vision: ${modelCache.vision.length}`);
+    console.log(`\u2705 Model catalog loaded \u2014 text: ${modelCache.text.length}, image: ${modelCache.image.length}, vision: ${modelCache.vision.length}, audio: ${modelCache.audio.length}, video: ${modelCache.video.length}`);
   } catch (err) {
     console.warn(`\u26A0\uFE0F Could not fetch model catalog: ${err.message}. Using hardcoded defaults.`);
   }
@@ -111,28 +116,28 @@ function pickBestModel(priority, available, fallback) {
 }
 async function getBestTextModel() {
   await fetchModelCatalog();
-  return pickBestModel(TEXT_MODEL_PRIORITY, modelCache.text, "google/gemini-2.0-flash-001");
+  return pickBestModel(TEXT_MODEL_PRIORITY, modelCache.text, TEXT_MODEL_PRIORITY[0]);
 }
 async function getBestCodeModel() {
   await fetchModelCatalog();
-  return pickBestModel(CODE_MODEL_PRIORITY, modelCache.text, "google/gemini-2.0-flash-001");
+  return pickBestModel(CODE_MODEL_PRIORITY, modelCache.text, CODE_MODEL_PRIORITY[0]);
 }
 async function getBestImageModel(preferred) {
   await fetchModelCatalog();
   if (preferred) return preferred;
-  return pickBestModel(IMAGE_MODEL_PRIORITY, modelCache.image, "black-forest-labs/flux-schnell");
+  return pickBestModel(IMAGE_MODEL_PRIORITY, modelCache.image, IMAGE_MODEL_PRIORITY[0]);
 }
 async function getBestVisionModel() {
   await fetchModelCatalog();
-  return pickBestModel(VISION_MODEL_PRIORITY, modelCache.vision, "google/gemini-2.0-flash-001");
+  return pickBestModel(VISION_MODEL_PRIORITY, modelCache.vision, VISION_MODEL_PRIORITY[0]);
 }
 async function getBestAudioModel() {
   await fetchModelCatalog();
-  return pickBestModel(AUDIO_MODEL_PRIORITY, modelCache.all, "bytedance/seedance-1-5-pro");
+  return pickBestModel(AUDIO_MODEL_PRIORITY, modelCache.audio, AUDIO_MODEL_PRIORITY[0]);
 }
 async function getBestVideoModel() {
   await fetchModelCatalog();
-  return pickBestModel(VIDEO_MODEL_PRIORITY, modelCache.all, "bytedance/seedance-1-5-pro");
+  return pickBestModel(VIDEO_MODEL_PRIORITY, modelCache.video, VIDEO_MODEL_PRIORITY[0]);
 }
 function getAllOpenRouterKeys() {
   const keys = [];
@@ -243,19 +248,34 @@ async function generateVision(prompt, imageBase64, mimeType, options = {}) {
 }
 async function generateTTS(text, options = {}) {
   const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const voice = options.voice || "alloy";
-  console.log(`\u{1F5E3}\uFE0F TTS model selected: tts-1 (Voice: ${voice})`);
+  const voice = options.voice || "Kore";
+  const model = await getBestAudioModel();
+  console.log(`\u{1F5E3}\uFE0F Audio model selected: ${model} (Voice: ${voice})`);
   return withFallback(keys, async (openai, key) => {
     console.log(`\u{1F511} Using key: ${key.substring(0, 8)}...`);
-    const response = await openai.audio.speech.create({
-      model: "tts-1",
-      voice,
-      input: text
+    // Use chat completions with a TTS prompt — OpenRouter audio models accept this format
+    const response = await openai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: `Please speak the following text aloud in voice "${voice}": ${text}`
+        }
+      ]
     });
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const base64Audio = buffer.toString("base64");
-    console.log(`\u2705 Speech generated (${base64Audio.length} bytes)`);
-    return base64Audio;
+    const content = response.choices?.[0]?.message?.content || "";
+    // If the model returns a URL to an audio file, fetch it and return base64
+    const urlMatch = content.match(/https?:\/\/\S+/);
+    if (urlMatch) {
+      const audioUrl = urlMatch[0].replace(/[)>.,]+$/, "");
+      const audioRes = await import_axios.default.get(audioUrl, { responseType: "arraybuffer" });
+      const base64Audio = Buffer.from(audioRes.data).toString("base64");
+      console.log(`\u2705 Audio fetched from URL (${base64Audio.length} bytes)`);
+      return { base64: base64Audio, model };
+    }
+    // Fallback: return the text response so Discord at least gets something
+    console.log(`\u26A0\uFE0F Audio model returned text instead of audio URL`);
+    return { text: content, model };
   });
 }
 async function generateCodeReview(code, language, options = {}) {
@@ -521,8 +541,8 @@ var commands = [
     )
   ),
   new import_discord.SlashCommandBuilder().setName("vision").setDescription("Analyze an image using AI").addAttachmentOption((option) => option.setName("image").setDescription("The image to analyze").setRequired(true)).addStringOption((option) => option.setName("prompt").setDescription("What to ask about the image").setRequired(false)),
-  new import_discord.SlashCommandBuilder().setName("speak").setDescription("Convert text to speech").addStringOption((option) => option.setName("text").setDescription("The text to speak").setRequired(true)).addStringOption(
-    (option) => option.setName("voice").setDescription("The voice to use").addChoices(
+  new import_discord.SlashCommandBuilder().setName("speak").setDescription("Convert text to speech using AI audio models").addStringOption((option) => option.setName("text").setDescription("The text to speak").setRequired(true)).addStringOption(
+    (option) => option.setName("voice").setDescription("The voice style to request").addChoices(
       { name: "Kore (Female)", value: "Kore" },
       { name: "Puck (Male)", value: "Puck" },
       { name: "Charon (Deep)", value: "Charon" },
@@ -530,6 +550,7 @@ var commands = [
       { name: "Zephyr (Soft)", value: "Zephyr" }
     )
   ),
+  new import_discord.SlashCommandBuilder().setName("video").setDescription("Generate an AI video").addStringOption((option) => option.setName("prompt").setDescription("The video prompt").setRequired(true)),
   new import_discord.SlashCommandBuilder().setName("submit-script").setDescription("Submit a script for line-by-line AI review").addAttachmentOption((option) => option.setName("script").setDescription("The script file to review").setRequired(true)),
   new import_discord.SlashCommandBuilder().setName("review").setDescription("Review code from a file or URL").addAttachmentOption((option) => option.setName("file").setDescription("Code file to review").setRequired(false)).addStringOption((option) => option.setName("url").setDescription("URL to code file").setRequired(false)).addStringOption((option) => option.setName("language").setDescription("Programming language (optional, will auto-detect)").setRequired(false)),
   new import_discord.SlashCommandBuilder().setName("fix").setDescription("Get a corrected version of your code").addAttachmentOption((option) => option.setName("file").setDescription("Code file to fix").setRequired(false)).addStringOption((option) => option.setName("url").setDescription("URL to code file").setRequired(false)).addStringOption((option) => option.setName("language").setDescription("Programming language (optional, will auto-detect)").setRequired(false)),
@@ -838,18 +859,45 @@ ${analysis}`).setThumbnail(imageUrl).setColor(5793266);
       const voice = options.voice || "Kore";
       if (!text) return "\u274C Missing text.";
       try {
-        const base64Audio = await generateTTS(text, { apiKey: VHXBOT_API_KEY, voice });
-        const buffer = Buffer.from(base64Audio, "base64");
-        return {
-          content: `\u{1F5E3}\uFE0F **Voice:** ${voice}
-**Text:** ${text}`,
-          files: [{
-            attachment: buffer,
-            name: "speech.mp3"
-          }]
-        };
+        const ttsResult = await generateTTS(text, { apiKey: VHXBOT_API_KEY, voice });
+        if (ttsResult.base64) {
+          const buffer = Buffer.from(ttsResult.base64, "base64");
+          return {
+            content: `\u{1F5E3}\uFE0F **Model:** ${ttsResult.model}\n**Voice:** ${voice}\n**Text:** ${text}`,
+            files: [{ attachment: buffer, name: "speech.mp3" }]
+          };
+        } else {
+          // Model returned text instead of audio
+          return `\u{1F5E3}\uFE0F **Model:** ${ttsResult.model}\n**Voice:** ${voice}\n**Response:** ${ttsResult.text}`;
+        }
       } catch (err) {
         return `\u274C **TTS Error:** ${err.message}`;
+      }
+    }
+    if (commandName === "video") {
+      const prompt = options.prompt;
+      if (!prompt) return "\u274C Missing prompt.";
+      try {
+        const model = await getBestVideoModel();
+        const keys = VHXBOT_API_KEY ? [VHXBOT_API_KEY, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
+        const openai = createOpenRouterClient(keys[0]);
+        const response = await openai.chat.completions.create({
+          model,
+          messages: [{ role: "user", content: prompt }]
+        });
+        const content2 = response.choices?.[0]?.message?.content || "";
+        const urlMatch = content2.match(/https?:\/\/\S+/);
+        const videoUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : null;
+        if (videoUrl) {
+          return new import_discord.EmbedBuilder()
+            .setTitle("AI Video Generation")
+            .setDescription(`**Prompt:** ${prompt}\n**Model:** ${model}\n**Video:** [Click to view](${videoUrl})`)
+            .setColor(5793266)
+            .setFooter({ text: "Powered by OpenRouter" });
+        }
+        return `\u{1F3A5} **Model:** ${model}\n${content2}`;
+      } catch (err) {
+        return `\u274C **Video Error:** ${err.message}`;
       }
     }
     if (commandName === "submit-script" || commandName === "review") {
