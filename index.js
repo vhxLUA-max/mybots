@@ -200,18 +200,19 @@ ${systemContext}` : SYSTEM_INSTRUCTION;
 }
 async function generateImage(prompt, options = {}) {
   const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const model = await getBestImageModel(options.model);
+  const model = options.model || await getBestImageModel();
   console.log(`\u{1F3A8} Image model selected: ${model}`);
   return withFallback(keys, async (openai, key) => {
     console.log(`\u{1F511} Using key: ${key.substring(0, 8)}...`);
-    const response = await openai.images.generate({
+    const response = await openai.chat.completions.create({
       model,
-      prompt,
-      n: 1,
-      size: "1024x1024"
+      messages: [{ role: "user", content: prompt }]
     });
-    const imageUrl = response.data?.[0]?.url;
-    if (!imageUrl) throw new Error("OpenRouter returned no image URL.");
+    const content = response.choices?.[0]?.message?.content;
+    if (!content) throw new Error("OpenRouter returned no image content.");
+    const urlMatch = content.match(/https?:\/\/\S+/);
+    const imageUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : content.trim();
+    if (!imageUrl.startsWith("http")) throw new Error("OpenRouter did not return a valid image URL.");
     console.log(`\u2705 Image generated: ${imageUrl}`);
     return imageUrl;
   });
@@ -513,10 +514,10 @@ var commands = [
   ).addStringOption((option) => option.setName("message").setDescription("Message").setRequired(true)),
   new import_discord.SlashCommandBuilder().setName("announce_list").setDescription("List active announcements"),
   new import_discord.SlashCommandBuilder().setName("imagine").setDescription("Generate an AI image using OpenRouter").addStringOption((option) => option.setName("prompt").setDescription("The image prompt").setRequired(true)).addStringOption(
-    (option) => option.setName("model").setDescription("The image model to use").addChoices(
-      { name: "Stable Diffusion XL", value: "stabilityai/stable-diffusion-xl" },
-      { name: "Flux Schnell", value: "black-forest-labs/flux-schnell" },
-      { name: "Flux Dev", value: "black-forest-labs/flux-dev" }
+    (option) => option.setName("model").setDescription("The image model to use (defaults to best available)").addChoices(
+      { name: "Riverflow v2 Pro", value: "sourceful/riverflow-v2-pro" },
+      { name: "Riverflow v2 Fast", value: "sourceful/riverflow-v2-fast" },
+      { name: "Flux.2 Klein 4B", value: "black-forest-labs/flux.2-klein-4b" }
     )
   ),
   new import_discord.SlashCommandBuilder().setName("vision").setDescription("Analyze an image using AI").addAttachmentOption((option) => option.setName("image").setDescription("The image to analyze").setRequired(true)).addStringOption((option) => option.setName("prompt").setDescription("What to ask about the image").setRequired(false)),
@@ -799,15 +800,16 @@ async function executeCommandLogic(commandName, options, userId = "DASHBOARD_TES
     }
     if (commandName === "imagine") {
       const prompt = options.prompt;
-      const model = options.model || "stabilityai/stable-diffusion-xl";
+      const model = options.model || null;
       if (!prompt) return "\u274C Missing prompt.";
       try {
+        const resolvedModel = model || await getBestImageModel();
         const imageUrl = await generateImage(prompt, {
           apiKey: VHXBOT_API_KEY,
-          model
+          model: resolvedModel
         });
         return new import_discord.EmbedBuilder().setTitle("AI Image Generation").setDescription(`**Prompt:** ${prompt}
-**Model:** ${model}`).setImage(imageUrl).setColor(5793266).setFooter({ text: "Powered by OpenRouter" });
+**Model:** ${resolvedModel}`).setImage(imageUrl).setColor(5793266).setFooter({ text: "Powered by OpenRouter" });
       } catch (err) {
         return `\u274C **Image Generation Error:** ${err.message}`;
       }
