@@ -323,58 +323,84 @@ async function generateTTS(text, options = {}) {
 }
 async function generateCodeReview(code, language, options = {}) {
   const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
-  const langText = language || "the detected language";
   const model = await getBestCodeModel();
-  console.log(`\u{1F50D} Code review model selected: ${model} (lang: ${langText})`);
-  const prompt = `Review the following code. ${language ? `The language is ${language}.` : "Please auto-detect the language."}
-Distinguish severity levels: 
-- critical: crashes the program or major security risk.
-- moderate: logic errors or performance issues.
-- minor: style issues or best practices.
-
-Special rules for Lua (if detected):
-- Remember that single-argument calls like 'print "hello"' or 'func {a=1}' are valid syntax. Do not mark them as errors.
-
-Provide a list of issues, a summary, and the fully corrected code.
-
-Code:
-\`\`\`${language || ""}
-${code}
-\`\`\``;
+  console.log("Code review model: " + model + " lang: " + (language || "auto"));
+  const sysMsg = [
+    "You are an expert code reviewer. Respond with ONLY a raw JSON object, no markdown fences.",
+    'Schema: {"issues":[{"severity":"critical"|"moderate"|"minor","line":number|null,"issue":string,"suggestion":string}],"summary":string,"correctedCode":string}',
+    "critical=crash/security, moderate=logic/perf, minor=style.",
+    "Lua: single-arg calls like 'print \"hi\"' or 'f{a=1}' are VALID — do not flag.",
+    "correctedCode must be the full fixed file."
+  ].join(" ");
+  const userMsg = "Review this " + (language || "code") + " and return JSON only:\n```" + (language || "") + "\n" + code + "\n```";
   return withFallback(keys, async (openai) => {
     const response = await openai.chat.completions.create({
-      model,
+      model, temperature: 0.1,
       messages: [
-        {
-          role: "system",
-          content: "You are a code reviewer. Output ONLY valid JSON matching this schema: { issues: [{ severity: 'critical'|'moderate'|'minor', line: number, issue: string, suggestion: string }], summary: string, correctedCode: string }"
-        },
-        { role: "user", content: prompt }
-      ],
-      response_format: { type: "json_object" }
+        { role: "system", content: sysMsg },
+        { role: "user", content: userMsg }
+      ]
     });
-    const content = response.choices[0].message.content;
-    if (!content) throw new Error("OpenRouter returned an empty response.");
-    return JSON.parse(content);
+    const raw = response.choices[0]?.message?.content;
+    if (!raw) throw new Error("Model returned empty response.");
+    const cleaned = raw.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch (e) {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("Model did not return valid JSON. Preview: " + raw.substring(0, 150));
+      parsed = JSON.parse(match[0]);
+    }
+    if (!parsed.issues) parsed.issues = [];
+    if (!parsed.summary) parsed.summary = "Review complete.";
+    if (!parsed.correctedCode) parsed.correctedCode = code;
+    return parsed;
   });
 }
+
+
 async function generateCodeFix(code, language, options = {}) {
   const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
   const model = await getBestCodeModel();
-  console.log(`\u{1F6E0}\uFE0F Code fix model selected: ${model} (lang: ${language})`);
-  const prompt = `Fix the following ${language} code. Output ONLY the corrected code block. No explanation.
-
-Code:
-\`\`\`${language}
-${code}
-\`\`\``;
+  console.log("Code fix model: " + model + " lang: " + (language || "auto"));
+  const sysMsg = "You are a code fixing assistant. Output ONLY raw fixed code. No markdown fences, no explanation, no preamble.";
+  const userMsg = "Fix ALL bugs and issues in this " + (language || "code") + ". Return only the fixed code.\n\n" + code;
   return withFallback(keys, async (openai) => {
     const response = await openai.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }]
+      model, temperature: 0.1,
+      messages: [
+        { role: "system", content: sysMsg },
+        { role: "user", content: userMsg }
+      ]
     });
-    return response.choices[0].message.content || "No response from OpenRouter.";
+    let result = response.choices[0]?.message?.content || "";
+    if (!result) throw new Error("Model returned empty response.");
+    result = result.replace(/^```[\w]*\n?/i, "").replace(/\n?```$/i, "").trim();
+    return result;
   });
+}
+
+
+function getFileExtension(language) {
+  const map = {
+    lua:"lua", javascript:"js", js:"js", typescript:"ts", ts:"ts",
+    python:"py", py:"py", cpp:"cpp", "c++":"cpp", c:"c",
+    csharp:"cs", "c#":"cs", java:"java", go:"go", rust:"rs",
+    ruby:"rb", php:"php", swift:"swift", kotlin:"kt",
+    shell:"sh", bash:"sh", html:"html", css:"css", json:"json", yaml:"yml"
+  };
+  return map[(language || "").toLowerCase()] || "txt";
+}
+function detectLanguageFromUrl(url) {
+  const ext = (url || "").split("?")[0].split(".").pop().toLowerCase();
+  const map = {
+    lua:"lua", js:"javascript", mjs:"javascript", cjs:"javascript",
+    ts:"typescript", tsx:"typescript", py:"python",
+    cpp:"cpp", h:"cpp", cs:"csharp", java:"java",
+    go:"go", rs:"rust", rb:"ruby", php:"php",
+    swift:"swift", kt:"kotlin", sh:"shell", html:"html", css:"css"
+  };
+  return map[ext] || null;
 }
 
 // bot/supabase.ts
@@ -985,99 +1011,65 @@ ${analysis}`).setThumbnail(imageUrl).setColor(5793266);
     if (commandName === "submit-script" || commandName === "review") {
       const codeUrl = options.script_url || options.file_url || options.url;
       let language = options.language;
-      console.log(`\u{1F50D} Review command triggered. URL: ${codeUrl}, Lang: ${language}`);
-      if (!codeUrl) return "\u274C Missing code file or URL. Please upload a file or provide a URL.";
+      if (!codeUrl) return "\u274C Missing code file or URL.";
       try {
-        const response = await import_axios2.default.get(codeUrl);
-        const codeContent = typeof response.data === "string" ? response.data : JSON.stringify(response.data, null, 2);
-        if (!codeContent || codeContent.trim() === "") {
-          return "\u274C The provided code file/URL is empty.";
-        }
-        if (codeContent.length > 2e4) {
-          return "\u274C Code is too large (max 20,000 characters).";
-        }
-        if (!language) {
-          const ext = codeUrl.split("?")[0].split(".").pop()?.toLowerCase();
-          if (ext === "lua") language = "lua";
-          else if (["js", "mjs", "cjs"].includes(ext || "")) language = "javascript";
-          else if (["ts", "tsx"].includes(ext || "")) language = "typescript";
-          else if (ext === "py") language = "python";
-          else if (ext === "cpp" || ext === "h") language = "cpp";
-          else if (ext === "cs") language = "csharp";
-          else if (ext === "java") language = "java";
-          else if (ext === "go") language = "go";
-        }
-        console.log(`\u{1F50D} Sending code to AI for review (Lang: ${language || "Auto"})...`);
-        const review = await generateCodeReview(codeContent, language, {
-          apiKey: VHXBOT_API_KEY,
-          provider: VHXBOT_PROVIDER
-        });
-        console.log(`\u2705 AI Review completed. Issues found: ${review.issues.length}`);
-        const embed = new import_discord.EmbedBuilder().setTitle(`${(language || "Detected Language").toUpperCase()} Code Review`).setDescription(review.summary.length > 2e3 ? review.summary.slice(0, 2e3) + "..." : review.summary).setColor(5793266).setTimestamp();
-        review.issues.slice(0, 10).forEach((issue, index) => {
-          const severityEmoji = issue.severity === "critical" ? "\u{1F534}" : issue.severity === "moderate" ? "\u{1F7E0}" : "\u{1F7E1}";
+        const resp = await import_axios2.default.get(codeUrl, { timeout: 10000 });
+        const codeContent = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data, null, 2);
+        if (!codeContent || codeContent.trim() === "") return "\u274C The provided file is empty.";
+        if (codeContent.length > 3e4) return "\u274C Code is too large (max 30,000 chars).";
+        if (!language) language = detectLanguageFromUrl(codeUrl);
+        console.log("Reviewing (Lang: " + (language || "auto") + ")...");
+        const review = await generateCodeReview(codeContent, language, { apiKey: VHXBOT_API_KEY });
+        const critCount = review.issues.filter(i => i.severity === "critical").length;
+        const modCount  = review.issues.filter(i => i.severity === "moderate").length;
+        const minCount  = review.issues.filter(i => i.severity === "minor").length;
+        const embedColor = critCount > 0 ? 15548997 : modCount > 0 ? 15105570 : 5763719;
+        const embed = new import_discord.EmbedBuilder()
+          .setTitle("\uD83D\uDD0D " + (language || "Code").toUpperCase() + " Review")
+          .setDescription((review.summary || "Review complete.").slice(0, 2000))
+          .setColor(embedColor)
+          .addFields({ name: "Issues Found", value: "\uD83D\uDD34 Critical: **" + critCount + "**  \uD83D\uDFE0 Moderate: **" + modCount + "**  \uD83D\uDFE1 Minor: **" + minCount + "**" })
+          .setTimestamp();
+        review.issues.slice(0, 8).forEach((issue, idx) => {
+          const emoji = issue.severity === "critical" ? "\uD83D\uDD34" : issue.severity === "moderate" ? "\uD83D\uDFE0" : "\uD83D\uDFE1";
+          const lineStr = issue.line ? " \u2014 Line " + issue.line : "";
           embed.addFields({
-            name: `${severityEmoji} Issue #${index + 1} (${issue.severity.toUpperCase()})`,
-            value: `**Line:** ${issue.line || "N/A"}
-**Problem:** ${issue.issue}
-**Fix:** ${issue.suggestion}`
+            name: emoji + " Issue #" + (idx + 1) + lineStr,
+            value: "**Problem:** " + (issue.issue || "").slice(0, 200) + "\n**Fix:** " + (issue.suggestion || "").slice(0, 200)
           });
         });
-        if (review.issues.length > 10) {
-          embed.setFooter({ text: `...and ${review.issues.length - 10} more issues. See corrected code below.` });
-        }
-        const langForExt = language || "txt";
-        const fileExtension = langForExt.toLowerCase() === "lua" ? "lua" : ["javascript", "js"].includes(langForExt.toLowerCase()) ? "js" : ["typescript", "ts"].includes(langForExt.toLowerCase()) ? "ts" : "txt";
-        const buffer = Buffer.from(review.correctedCode, "utf-8");
-        return {
-          embeds: [embed],
-          files: [{
-            attachment: buffer,
-            name: `reviewed_code.${fileExtension}`
-          }],
-          correctedCode: review.correctedCode,
-          language
-        };
+        if (review.issues.length > 8) embed.setFooter({ text: "...and " + (review.issues.length - 8) + " more. See corrected file below." });
+        const buffer = Buffer.from(review.correctedCode || codeContent, "utf-8");
+        return { embeds: [embed], files: [{ attachment: buffer, name: "reviewed_code." + getFileExtension(language) }] };
       } catch (err) {
-        return `\u274C **Review Error:** ${err.message}`;
+        console.error("\u274C Review error:", err);
+        return "\u274C **Review Error:** " + err.message;
       }
     }
+
     if (commandName === "fix") {
       const codeUrl = options.file_url || options.url;
       let language = options.language;
-      if (!codeUrl) return "\u274C Missing code file or URL.";
       try {
-        const response = await import_axios2.default.get(codeUrl);
-        const codeContent = typeof response.data === "string" ? response.data : JSON.stringify(response.data, null, 2);
-        if (codeContent.length > 2e4) {
-          return "\u274C Code is too large (max 20,000 characters).";
-        }
-        if (!language) {
-          const ext = codeUrl.split(".").pop()?.toLowerCase();
-          if (ext === "lua") language = "lua";
-          else if (["js", "mjs", "cjs"].includes(ext || "")) language = "javascript";
-          else if (["ts", "tsx"].includes(ext || "")) language = "typescript";
-          else if (ext === "py") language = "python";
-        }
-        const fixedCode = await generateCodeFix(codeContent, language || "lua", {
-          apiKey: VHXBOT_API_KEY,
-          provider: VHXBOT_PROVIDER
-        });
-        const fileExtension = language ? language.toLowerCase() === "lua" ? "lua" : ["javascript", "js"].includes(language.toLowerCase()) ? "js" : ["typescript", "ts"].includes(language.toLowerCase()) ? "ts" : "txt" : "txt";
+        if (!codeUrl) return "\u274C Missing code file or URL.";
+        const resp = await import_axios2.default.get(codeUrl, { timeout: 10000 });
+        const codeContent = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data, null, 2);
+        if (!language) language = detectLanguageFromUrl(codeUrl);
+        if (!codeContent || codeContent.trim() === "") return "\u274C Code is empty.";
+        if (codeContent.length > 3e4) return "\u274C Code is too large (max 30,000 chars).";
+        console.log("Fixing (Lang: " + (language || "auto") + ")...");
+        const fixedCode = await generateCodeFix(codeContent, language || null, { apiKey: VHXBOT_API_KEY });
         const buffer = Buffer.from(fixedCode, "utf-8");
         return {
-          content: `\u2705 **Corrected ${(language || "Code").toUpperCase()}:**`,
-          files: [{
-            attachment: buffer,
-            name: `fixed_code.${fileExtension}`
-          }],
-          correctedCode: fixedCode,
-          language: language || "lua"
+          content: "\u2705 **Fixed " + (language || "Code").toUpperCase() + "** \u2014 corrected file attached:",
+          files: [{ attachment: buffer, name: "fixed_code." + getFileExtension(language) }]
         };
       } catch (err) {
-        return `\u274C **Fix Error:** ${err.message}`;
+        console.error("\u274C Fix error:", err);
+        return "\u274C **Fix Error:** " + err.message;
       }
     }
+
     return "\u274C Command logic not implemented for tester yet.";
   } catch (e) {
     console.error(`\u274C Logic Error: ${e}`);
