@@ -57,9 +57,9 @@ var CODE_MODEL_PRIORITY = [
   "minimax/minimax-m2.5:free"
 ];
 var IMAGE_MODEL_PRIORITY = [
-  "black-forest-labs/flux-1-schnell",
-  "black-forest-labs/flux-1-pro",
-  "stabilityai/stable-diffusion-3-medium"
+  "google/gemini-2.5-flash-image",
+  "black-forest-labs/flux.2-pro",
+  "black-forest-labs/flux.2-flex"
 ];
 var AUDIO_MODEL_PRIORITY = [
   "openai/tts-1",
@@ -201,41 +201,46 @@ ${systemContext}` : SYSTEM_INSTRUCTION;
 async function generateImage(prompt, options = {}) {
   const keys = options.apiKey ? [options.apiKey, ...getAllOpenRouterKeys()] : getAllOpenRouterKeys();
   const model = options.model || await getBestImageModel();
-  console.log(`\u{1F3A8} Image model selected: ${model}`);
+  console.log(`\uD83C\uDFA8 Image model selected: ${model}`);
   return withFallback(keys, async (openai, key) => {
-    console.log(`\u{1F511} Using key: ${key.substring(0, 8)}...`);
-    try {
-      // Use the proper images/generations endpoint
-      const imgRes = await import_axios.default.post(
-        "https://openrouter.ai/api/v1/images/generations",
-        { model, prompt, n: 1, size: "1024x1024" },
-        {
-          headers: {
-            "Authorization": `Bearer ${key}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://discord.com",
-            "X-Title": "VHX Bot Assistant"
-          }
-        }
-      );
-      const imageUrl = imgRes.data?.data?.[0]?.url;
-      if (!imageUrl) throw new Error("No image URL in response.");
-      console.log(`\u2705 Image generated: ${imageUrl}`);
-      return imageUrl;
-    } catch (imgErr) {
-      console.warn(`\u26A0\uFE0F images/generations failed (${imgErr.message}), trying chat completions...`);
-      // Fallback: some models return image URLs inline in chat
-      const chatRes = await openai.chat.completions.create({
+    console.log(`\uD83D\uDD11 Using key: ${key.substring(0, 8)}...`);
+    // OpenRouter image gen uses chat/completions with modalities parameter
+    // Images are returned as base64 data URLs in message.images[]
+    const response = await import_axios.default.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
         model,
-        messages: [{ role: "user", content: `Generate an image of: ${prompt}` }]
-      });
-      const content = chatRes.choices?.[0]?.message?.content || "";
-      const urlMatch = content.match(/https?:\/\/\S+/);
-      const imageUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : null;
-      if (!imageUrl) throw new Error("OpenRouter did not return a valid image URL.");
-      console.log(`\u2705 Image generated via chat: ${imageUrl}`);
+        messages: [{ role: "user", content: prompt }],
+        modalities: ["image", "text"]
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://discord.com",
+          "X-Title": "VHX Bot Assistant"
+        }
+      }
+    );
+    const message = response.data?.choices?.[0]?.message;
+    if (!message) throw new Error("No message in response.");
+    // Check message.images[] first (OpenRouter image gen format)
+    if (message.images && message.images.length > 0) {
+      const imageDataUrl = message.images[0]?.image_url?.url;
+      if (imageDataUrl) {
+        console.log(`\u2705 Image generated as base64 data URL`);
+        return imageDataUrl; // data:image/png;base64,...
+      }
+    }
+    // Fallback: check content for a URL
+    const content = message.content || "";
+    const urlMatch = content.match(/https?:\/\/\S+/);
+    const imageUrl = urlMatch ? urlMatch[0].replace(/[)>.,]+$/, "") : null;
+    if (imageUrl) {
+      console.log(`\u2705 Image URL found in content: ${imageUrl}`);
       return imageUrl;
     }
+    throw new Error("OpenRouter did not return a valid image.");
   });
 }
 async function generateVision(prompt, imageBase64, mimeType, options = {}) {
@@ -856,12 +861,28 @@ async function executeCommandLogic(commandName, options, userId = "DASHBOARD_TES
       if (!prompt) return "\u274C Missing prompt.";
       try {
         const resolvedModel = model || await getBestImageModel();
-        const imageUrl = await generateImage(prompt, {
+        const imageResult = await generateImage(prompt, {
           apiKey: VHXBOT_API_KEY,
           model: resolvedModel
         });
-        return new import_discord.EmbedBuilder().setTitle("AI Image Generation").setDescription(`**Prompt:** ${prompt}
-**Model:** ${resolvedModel}`).setImage(imageUrl).setColor(5793266).setFooter({ text: "Powered by OpenRouter" });
+        const embed = new import_discord.EmbedBuilder()
+          .setTitle("AI Image Generation")
+          .setDescription(`**Prompt:** ${prompt}\n**Model:** ${resolvedModel}`)
+          .setColor(5793266)
+          .setFooter({ text: "Powered by OpenRouter" });
+        // If it's a base64 data URL, send as file attachment
+        if (imageResult.startsWith("data:")) {
+          const matches = imageResult.match(/^data:(.+);base64,(.+)$/);
+          if (!matches) throw new Error("Invalid base64 data URL format.");
+          const mimeType = matches[1];
+          const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
+          const buffer = Buffer.from(matches[2], "base64");
+          embed.setImage(`attachment://image.${ext}`);
+          return { embeds: [embed], files: [{ attachment: buffer, name: `image.${ext}` }] };
+        }
+        // Otherwise it's a direct URL
+        embed.setImage(imageResult);
+        return embed;
       } catch (err) {
         return `\u274C **Image Generation Error:** ${err.message}`;
       }
