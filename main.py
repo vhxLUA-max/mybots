@@ -54,28 +54,34 @@ class VHXBot(commands.Bot):
         self.tools = Tools(self.ai_client)
         self.custom_commands = CustomCommandsManager()
         
-        # Start background tasks
-        self.check_expired_mutes.start()
-        self.update_execution_count.start()
+        logger.info("✅ Bot components initialized")
+        
+        try:
+            if config.GUILD_ID:
+                guild = discord.Object(id=config.GUILD_ID)
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                logger.info(f"✅ Synced {len(synced)} commands to guild {config.GUILD_ID}")
+            else:
+                synced = await self.tree.sync()
+                logger.info(f"✅ Synced {len(synced)} commands globally")
+        except Exception as e:
+            logger.error(f"❌ Failed to sync commands: {e}")
         
         logger.info("✅ Bot setup complete")
 
     async def on_ready(self):
         logger.info(f"🤖 {self.user} is online!")
         logger.info(f"📊 Guilds: {len(self.guilds)}")
+        logger.info(f"👥 Users: {sum(g.member_count for g in self.guilds)}")
         
-        # Sync commands
-        try:
-            if config.GUILD_ID:
-                guild = discord.Object(id=config.GUILD_ID)
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                logger.info(f"✅ Synced commands to guild {config.GUILD_ID}")
-            else:
-                await self.tree.sync()
-                logger.info("✅ Synced commands globally")
-        except Exception as e:
-            logger.error(f"Failed to sync commands: {e}")
+        if not self.check_expired_mutes.is_running():
+            self.check_expired_mutes.start()
+            logger.info("✅ Started check_expired_mutes task")
+        
+        if not self.update_execution_count.is_running():
+            self.update_execution_count.start()
+            logger.info("✅ Started update_execution_count task")
 
     # ========================================================================
     # Event Handlers
@@ -131,6 +137,22 @@ class VHXBot(commands.Bot):
     async def on_member_remove(self, member: discord.Member):
         if self.moderation:
             await self.moderation.log_member_leave(member)
+    
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
+        """Handle command errors"""
+        logger.error(f"Command error: {error}", exc_info=error)
+        if isinstance(error, commands.CommandNotFound):
+            return
+        await ctx.send(f"❌ An error occurred: {str(error)}", ephemeral=True)
+    
+    async def on_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        """Handle slash command errors"""
+        logger.error(f"App command error: {error}", exc_info=error)
+        
+        if interaction.response.is_done():
+            await interaction.followup.send(f"❌ An error occurred: {str(error)}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ An error occurred: {str(error)}", ephemeral=True)
 
     # ========================================================================
     # Background Tasks
@@ -138,14 +160,21 @@ class VHXBot(commands.Bot):
     @tasks.loop(minutes=1)
     async def check_expired_mutes(self):
         """Check and remove expired mutes"""
-        for guild in self.guilds:
-            mutes = await self.db.get_active_mutes(guild.id)
-            for mute in mutes:
-                expires_at = datetime.fromisoformat(mute["expires_at"])
-                if datetime.utcnow() >= expires_at:
-                    user = guild.get_member(int(mute["user_id"]))
-                    if user:
-                        await self.moderation.unmute_user(user, guild)
+        try:
+            for guild in self.guilds:
+                mutes = await self.db.get_active_mutes(guild.id)
+                for mute in mutes:
+                    expires_at = datetime.fromisoformat(mute["expires_at"])
+                    if datetime.utcnow() >= expires_at:
+                        user = guild.get_member(int(mute["user_id"]))
+                        if user:
+                            await self.moderation.unmute_user(user, guild)
+        except Exception as e:
+            logger.error(f"Error in check_expired_mutes: {e}")
+    
+    @check_expired_mutes.before_loop
+    async def before_check_expired_mutes(self):
+        await self.wait_until_ready()
 
     @tasks.loop(minutes=5)
     async def update_execution_count(self):
@@ -160,10 +189,13 @@ class VHXBot(commands.Bot):
             
             total = await self.db.get_total_executions()
             
-            # Update channel name
             await channel.edit(name=f"📊┃{fmt_number(total)}-execs")
         except Exception as e:
             logger.error(f"Failed to update execution count: {e}")
+    
+    @update_execution_count.before_loop
+    async def before_update_execution_count(self):
+        await self.wait_until_ready()
 
 bot = VHXBot()
 
