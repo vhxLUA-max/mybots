@@ -53,8 +53,25 @@ class VHXBot(commands.Bot):
         self.ai_client = AIClient()
         self.tools = Tools(self.ai_client)
         self.custom_commands = CustomCommandsManager()
-        
+
         logger.info("✅ Bot components initialized")
+
+        # Load feature cogs (ported from Logiq)
+        cogs = [
+            "cogs.giveaways",
+            "cogs.music",
+            "cogs.social_alerts",
+            "cogs.temp_voice",
+            "cogs.tickets",
+            "cogs.roles",
+            "cogs.analytics",
+        ]
+        for cog in cogs:
+            try:
+                await self.load_extension(cog)
+                logger.info(f"✅ Loaded cog: {cog}")
+            except Exception as e:
+                logger.error(f"❌ Failed to load cog {cog}: {e}")
         
         try:
             if config.GUILD_ID:
