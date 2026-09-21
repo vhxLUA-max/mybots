@@ -6,6 +6,158 @@
   let stopped = false;
   let busy = false;
   let currentSolution = null;
+  let bridgeInjected = false;
+  let requestId = 0;
+  const pendingRequests = new Map();
+
+  const pageBridge = `(() => {
+    if (window.__sdaPageBridge) return;
+    window.__sdaPageBridge = true;
+
+    let webpackRequire;
+    try {
+      if (!self.webpackChunk || !Array.isArray(self.webpackChunk)) throw new Error("Sudoku.com Webpack runtime not found");
+      self.webpackChunk.push([[Date.now()], {}, (require) => {
+        webpackRequire = require;
+      }]);
+      if (typeof webpackRequire !== "function") throw new Error("Sudoku.com Webpack require was not exposed");
+
+      const store = webpackRequire(62351)?.default;
+      const actions = webpackRequire(80457);
+      if (!store || !store.state || !actions?.bE || !actions?.E7) {
+        throw new Error("Sudoku.com game store was not found");
+      }
+
+      const snapshot = () => {
+        const game = store.state.currentGame;
+        if (!game || !Array.isArray(game.values) || game.values.length !== 81) {
+          throw new Error("Sudoku.com current game is not available");
+        }
+
+        return {
+          board: game.values.map((cell) => Number(cell?.val) || 0),
+          editable: game.values.map((cell) => Boolean(cell?.editable)),
+          solution: typeof game.solution === "string"
+            ? game.solution.split("").map((value) => Number(value) || 0)
+            : Array.isArray(game.solution)
+              ? game.solution.map((value) => Number(value) || 0)
+              : null,
+          selectedCell: store.state.selectedCell
+        };
+      };
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window) return;
+        const message = event.data;
+        if (!message || message.source !== "sda-content") return;
+
+        try {
+          if (message.action === "get") {
+            window.postMessage({
+              source: "sda-page",
+              type: "response",
+              id: message.id,
+              state: snapshot()
+            }, "*");
+            return;
+          }
+
+          if (message.action === "set") {
+            const index = Number(message.index);
+            const digit = Number(message.digit);
+
+            if (!Number.isInteger(index) || index < 0 || index >= 81) {
+              throw new Error("Invalid Sudoku cell index");
+            }
+            if (!Number.isInteger(digit) || digit < 1 || digit > 9) {
+              throw new Error("Invalid Sudoku digit");
+            }
+
+            store.dispatch(actions.bE.updateBoard, {
+              type: actions.E7.select,
+              value: index
+            });
+            store.dispatch(actions.bE.updateBoard, {
+              type: actions.E7.value,
+              value: digit
+            });
+
+            window.postMessage({
+              source: "sda-page",
+              type: "response",
+              id: message.id,
+              state: snapshot()
+            }, "*");
+          }
+        } catch (error) {
+          window.postMessage({
+            source: "sda-page",
+            type: "error",
+            id: message.id,
+            error: error instanceof Error ? error.message : String(error)
+          }, "*");
+        }
+      });
+
+      window.postMessage({ source: "sda-page", type: "ready" }, "*");
+    } catch (error) {
+      window.postMessage({
+        source: "sda-page",
+        type: "bridge-error",
+        error: error instanceof Error ? error.message : String(error)
+      }, "*");
+    }
+  })();`;
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+
+    const message = event.data;
+    if (!message || message.source !== "sda-page") return;
+
+    if ((message.type === "response" || message.type === "error") && pendingRequests.has(message.id)) {
+      const pending = pendingRequests.get(message.id);
+      pendingRequests.delete(message.id);
+      clearTimeout(pending.timer);
+
+      if (message.type === "error") {
+        pending.reject(new Error(message.error));
+      } else {
+        pending.resolve(message.state);
+      }
+    }
+  });
+
+  function injectBridge() {
+    if (bridgeInjected) return;
+    bridgeInjected = true;
+
+    const script = document.createElement("script");
+    script.textContent = pageBridge;
+    (document.documentElement || document.head || document.body).appendChild(script);
+    script.remove();
+  }
+
+  function requestPage(action, payload = {}) {
+    injectBridge();
+
+    return new Promise((resolve, reject) => {
+      const id = ++requestId;
+      const timer = setTimeout(() => {
+        pendingRequests.delete(id);
+        reject(new Error("Sudoku.com game bridge timed out"));
+      }, 2000);
+
+      pendingRequests.set(id, { resolve, reject, timer });
+
+      window.postMessage({
+        source: "sda-content",
+        action,
+        id,
+        ...payload
+      }, "*");
+    });
+  }
 
   const panel = document.createElement("div");
   panel.className = "sda-panel";
@@ -55,7 +207,7 @@
     return null;
   }
 
-  function readGame() {
+  function parseStoredGame() {
     const raw = localStorage.getItem("main_game");
     if (!raw) throw new Error("main_game was not found");
 
@@ -74,7 +226,29 @@
     const editable = game.values.map(value => Boolean(value?.editable));
     const solution = normalizeSolution(game.solution);
 
-    return { board, editable, solution };
+    return {
+      board,
+      editable,
+      solution
+    };
+  }
+
+  async function readGame() {
+    try {
+      const state = await requestPage("get");
+      const board = state.board.map(normalizeValue);
+      const editable = state.editable.map(Boolean);
+      const solution = normalizeSolution(state.solution);
+
+      if (board.length !== 81 || editable.length !== 81) {
+        throw new Error("Sudoku.com current game does not contain 81 cells");
+      }
+
+      return { board, editable, solution };
+    } catch (error) {
+      const stored = parseStoredGame();
+      return stored;
+    }
   }
 
   function solveSudoku(input) {
@@ -106,28 +280,36 @@
       for (let r = 0; r < 9; r++) {
         for (let c = 0; c < 9; c++) {
           if (board[r][c]) continue;
+
           const box = Math.floor(r / 3) * 3 + Math.floor(c / 3);
           const mask = FULL & ~(rows[r] | cols[c] | boxes[box]);
           let count = 0;
+
           for (let bits = mask; bits; bits &= bits - 1) count++;
+
           if (count === 0) return false;
+
           if (count < bestCount) {
             bestCount = count;
             bestR = r;
             bestC = c;
             bestMask = mask;
+
             if (count === 1) break;
           }
         }
+
         if (bestCount === 1) break;
       }
 
       if (bestR === -1) return true;
 
       const box = Math.floor(bestR / 3) * 3 + Math.floor(bestC / 3);
+
       for (let mask = bestMask; mask; mask &= mask - 1) {
         const bit = mask & -mask;
         const value = 32 - Math.clz32(bit);
+
         board[bestR][bestC] = value;
         rows[bestR] |= bit;
         cols[bestC] |= bit;
@@ -153,14 +335,18 @@
 
   function getEditableCells(editable) {
     const cells = [];
+
     for (let i = 0; i < editable.length; i++) {
       if (editable[i]) cells.push(i);
     }
+
     return cells;
   }
 
   function validateSolution(board, solution) {
-    if (!solution || solution.length !== 81) return false;
+    if (!solution || solution.length !== 81 || solution.some(value => !normalizeValue(value))) {
+      return false;
+    }
 
     for (let i = 0; i < 81; i++) {
       if (board[i] && board[i] !== solution[i]) return false;
@@ -176,62 +362,37 @@
     return solved ? solved.flat() : null;
   }
 
-  function getBoardCanvas() {
-    const canvas = document.querySelector("#game canvas");
-    if (!canvas) throw new Error("Sudoku board canvas was not found");
-    return canvas;
+  async function setCell(index, digit) {
+    const state = await requestPage("set", { index, digit });
+    if (!state || state.board?.[index] !== digit) {
+      throw new Error("Move rejected at cell " + (index + 1) + ": expected " + digit);
+    }
   }
 
-  async function selectCell(index) {
-    const canvas = getBoardCanvas();
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) throw new Error("Sudoku board canvas has no visible size");
-
-    const row = Math.floor(index / 9);
-    const col = index % 9;
-    const clientX = rect.left + ((col + 0.5) / 9) * rect.width;
-    const clientY = rect.top + ((row + 0.5) / 9) * rect.height;
-
-    canvas.dispatchEvent(new MouseEvent("mousedown", {
-      bubbles: true,
-      cancelable: true,
-      clientX,
-      clientY
-    }));
-
-    await delay(25);
-  }
-
-  async function enterDigit(digit) {
-    const keyCode = 48 + digit;
-    window.dispatchEvent(new KeyboardEvent("keydown", {
-      key: String(digit),
-      code: "Digit" + digit,
-      keyCode,
-      which: keyCode,
-      bubbles: true,
-      cancelable: true
-    }));
-    await delay(15);
-  }
-
-  function verifySolution(solution) {
-    const raw = localStorage.getItem("main_game");
-    if (!raw) return false;
-
+  async function verifySolution(solution) {
     try {
-      const game = JSON.parse(raw);
-      if (!Array.isArray(game.values) || game.values.length !== 81) return false;
-      return game.values.every((value, index) => normalizeValue(value?.val) === solution[index]);
+      const state = await requestPage("get");
+      return state.board.every((value, index) => normalizeValue(value) === solution[index]);
+    } catch {
+      return verifyStoredSolution(solution);
+    }
+  }
+
+  function verifyStoredSolution(solution) {
+    try {
+      const game = parseStoredGame();
+      return game.board.every((value, index) => value === solution[index]);
     } catch {
       return false;
     }
   }
 
   async function scan() {
-    const game = readGame();
+    const game = await readGame();
     const empty = game.editable.filter((editable, index) => editable && game.board[index] === 0).length;
-    setStatus("Scanned: " + empty + " empty");
+    const filled = game.board.filter(Boolean).length;
+    const conflicts = game.boardFromFlat ? 0 : 0;
+    setStatus("Scanned: " + empty + " empty, " + filled + " filled");
     return game;
   }
 
@@ -239,13 +400,16 @@
     if (busy) return;
 
     try {
-      const game = await scan();
+      const game = await readGame();
       const solution = getSolution(game);
 
-      if (!solution) throw new Error("The current board does not match a valid Sudoku solution");
+      if (!solution) {
+        throw new Error("The current board does not match a valid Sudoku solution");
+      }
 
       currentSolution = solution;
-      setStatus("Solved: " + game.editable.filter(Boolean).length + " editable cells");
+      const editableEmpty = game.editable.filter((editable, index) => editable && game.board[index] === 0).length;
+      setStatus("Solved: " + editableEmpty + " moves");
     } catch (error) {
       setStatus(error.message);
       currentSolution = null;
@@ -259,13 +423,15 @@
     stopped = false;
 
     try {
-      const game = readGame();
+      const game = await readGame();
       const solution = getSolution(game);
 
-      if (!solution) throw new Error("The current board does not match a valid Sudoku solution");
+      if (!solution) {
+        throw new Error("The current board does not match a valid Sudoku solution");
+      }
 
       currentSolution = solution;
-      const editableCells = getEditableCells(game.editable);
+      const editableCells = getEditableCells(game.editable).filter(index => game.board[index] === 0);
 
       setStatus("Playing 0/" + editableCells.length);
 
@@ -276,24 +442,24 @@
         }
 
         const index = editableCells[i];
-        if (game.board[index] === 0) {
-          await selectCell(index);
-          await enterDigit(solution[index]);
-          await delay(Number(delayEl.value));
+        const digit = solution[index];
 
-          const liveGame = readGame();
-          if (liveGame.board[index] !== solution[index]) {
-            throw new Error("Move rejected at cell " + (index + 1) + ": expected " + solution[index] + ", found " + liveGame.board[index]);
-          }
-
-          game.board[index] = liveGame.board[index];
-        }
+        await setCell(index, digit);
+        await delay(Number(delayEl.value));
 
         setStatus("Playing " + (i + 1) + "/" + editableCells.length);
       }
 
       await delay(Math.max(100, Number(delayEl.value)));
-      setStatus(verifySolution(solution) ? "Completed" : "Finished entering moves");
+
+      const finalState = await readGame();
+      const correct = finalState.board.every((value, index) => value === solution[index]);
+
+      if (!correct) {
+        throw new Error("Verification failed: at least one cell does not match the calculated solution");
+      }
+
+      setStatus("Completed");
     } catch (error) {
       setStatus(error.message);
     } finally {
