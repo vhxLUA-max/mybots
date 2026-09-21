@@ -36,38 +36,45 @@
     delayValueEl.textContent = delayEl.value + "ms";
   });
 
-  function parseCell(cell) {
-    const id = cell.id || "";
-    const match = id.match(/^cell-(\\d)-(\\d)$/);
-    if (!match) return null;
-    const row = Number(match[1]);
-    const col = Number(match[2]);
-    let value = Number(cell.getAttribute("data-value") || 0);
-    if (!Number.isInteger(value) || value < 1 || value > 9) value = 0;
-    return { row, col, value, element: cell };
+  function normalizeValue(value) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= 1 && number <= 9 ? number : 0;
   }
 
-  function readBoard() {
-    const board = Array.from({ length: 9 }, () => Array(9).fill(0));
-    const cells = Array.from(document.querySelectorAll(".sudoku-board .sudoku-cell"));
-    if (cells.length !== 81) throw new Error("Expected 81 Sudoku cells, found " + cells.length);
-
-    for (const cell of cells) {
-      const parsed = parseCell(cell);
-      if (!parsed) throw new Error("A Sudoku cell did not have the expected cell-r-c id");
-      board[parsed.row][parsed.col] = parsed.value;
+  function normalizeSolution(solution) {
+    if (Array.isArray(solution)) {
+      const values = solution.map(normalizeValue);
+      return values.length === 81 && values.every(Boolean) ? values : null;
     }
 
-    return board;
+    if (typeof solution === "string") {
+      const values = solution.split("").map(normalizeValue);
+      return values.length === 81 && values.every(Boolean) ? values : null;
+    }
+
+    return null;
   }
 
-  function findCell(row, col) {
-    return document.getElementById("cell-" + row + "-" + col)
-      || document.querySelector(".sudoku-board .sudoku-cell[aria-label^=\"Row " + (row + 1) + ", Column " + (col + 1) + "\"]");
-  }
+  function readGame() {
+    const raw = localStorage.getItem("main_game");
+    if (!raw) throw new Error("main_game was not found");
 
-  function getDigitButton(digit) {
-    return document.querySelector(".digit-button-" + digit);
+    let game;
+    try {
+      game = JSON.parse(raw);
+    } catch {
+      throw new Error("main_game is not valid JSON");
+    }
+
+    if (!Array.isArray(game.values) || game.values.length !== 81) {
+      throw new Error("main_game.values does not contain 81 cells");
+    }
+
+    const board = game.values.map(value => normalizeValue(value?.val));
+    const editable = game.values.map(value => Boolean(value?.editable));
+    const solution = normalizeSolution(game.solution);
+
+    return { board, editable, solution };
   }
 
   function solveSudoku(input) {
@@ -139,44 +146,79 @@
     return search() ? board : null;
   }
 
-  function getEmptyCells(board) {
+  function boardFromFlat(values) {
+    return Array.from({ length: 9 }, (_, row) => values.slice(row * 9, row * 9 + 9));
+  }
+
+  function getEditableCells(editable) {
     const cells = [];
-    for (let r = 0; r < 9; r++) {
-      for (let c = 0; c < 9; c++) {
-        if (board[r][c] === 0) cells.push({ row: r, col: c });
-      }
+    for (let i = 0; i < editable.length; i++) {
+      if (editable[i]) cells.push(i);
     }
     return cells;
   }
 
-  async function clickCell(cell) {
-    if (!cell) throw new Error("Could not find a Sudoku cell");
-    cell.click();
-    await delay(30);
+  function dispatchKey(key, code, keyCode) {
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      key,
+      code,
+      keyCode,
+      which: keyCode,
+      bubbles: true,
+      cancelable: true
+    }));
   }
 
-  async function enterDigit(digit) {
-    const button = getDigitButton(digit);
-    if (!button) throw new Error("Could not find digit button " + digit);
-    button.click();
+  function moveToNextCell(index) {
+    if (index === 80) return;
+
+    if ((index + 1) % 9 === 0) {
+      dispatchKey("ArrowDown", "ArrowDown", 40);
+      for (let i = 0; i < 9; i++) {
+        dispatchKey("ArrowLeft", "ArrowLeft", 37);
+      }
+      return;
+    }
+
+    dispatchKey("ArrowRight", "ArrowRight", 39);
+  }
+
+  function verifySolution(solution) {
+    const raw = localStorage.getItem("main_game");
+    if (!raw) return false;
+
+    try {
+      const game = JSON.parse(raw);
+      if (!Array.isArray(game.values) || game.values.length !== 81) return false;
+      return game.values.every((value, index) => normalizeValue(value?.val) === solution[index]);
+    } catch {
+      return false;
+    }
   }
 
   async function scan() {
-    currentSolution = null;
-    const board = readBoard();
-    const empty = getEmptyCells(board).length;
+    const game = readGame();
+    const empty = game.editable.filter((editable, index) => editable && game.board[index] === 0).length;
     setStatus("Scanned: " + empty + " empty");
-    return board;
+    return game;
   }
 
   async function solveOnly() {
     if (busy) return;
+
     try {
-      const board = await scan();
-      const solution = solveSudoku(board);
+      const game = await scan();
+      let solution = game.solution;
+
+      if (!solution) {
+        const solved = solveSudoku(boardFromFlat(game.board));
+        solution = solved ? solved.flat() : null;
+      }
+
       if (!solution) throw new Error("The current board is invalid or has no solution");
+
       currentSolution = solution;
-      setStatus("Solved: " + getEmptyCells(board).length + " moves");
+      setStatus("Solved: " + game.editable.filter(Boolean).length + " editable cells");
     } catch (error) {
       setStatus(error.message);
       currentSolution = null;
@@ -185,43 +227,50 @@
 
   async function autoPlay() {
     if (busy) return;
+
     busy = true;
     stopped = false;
 
     try {
-      const board = readBoard();
-      const solution = solveSudoku(board);
+      const game = readGame();
+      let solution = game.solution;
+
+      if (!solution) {
+        const solved = solveSudoku(boardFromFlat(game.board));
+        solution = solved ? solved.flat() : null;
+      }
+
       if (!solution) throw new Error("The current board is invalid or has no solution");
 
       currentSolution = solution;
-      const emptyCells = getEmptyCells(board);
-      setStatus("Playing 0/" + emptyCells.length);
+      const editableCells = getEditableCells(game.editable);
 
-      for (let i = 0; i < emptyCells.length; i++) {
+      setStatus("Playing 0/" + editableCells.length);
+      window.dispatchEvent(new Event("focus"));
+
+      for (let i = 0; i < 81; i++) {
         if (stopped) {
-          setStatus("Stopped at " + i + "/" + emptyCells.length);
+          setStatus("Stopped at " + i + "/81");
           return;
         }
 
-        const { row, col } = emptyCells[i];
-        const liveCell = findCell(row, col);
-        const liveValue = Number(liveCell?.getAttribute("data-value") || 0);
-
-        if (liveValue !== 0) {
-          setStatus("Playing " + (i + 1) + "/" + emptyCells.length);
-          continue;
+        if (game.editable[i] && game.board[i] !== solution[i]) {
+          const key = String(solution[i]);
+          const keyCode = 48 + solution[i];
+          dispatchKey(key, "Digit" + key, keyCode);
         }
 
-        await clickCell(liveCell);
-        await enterDigit(solution[row][col]);
-        await delay(Number(delayEl.value));
+        moveToNextCell(i);
 
-        setStatus("Playing " + (i + 1) + "/" + emptyCells.length);
+        if (game.editable[i]) {
+          setStatus("Playing " + (editableCells.indexOf(i) + 1) + "/" + editableCells.length);
+        }
+
+        await delay(Number(delayEl.value));
       }
 
-      const finalBoard = readBoard();
-      const complete = finalBoard.every((row, r) => row.every((value, c) => value === solution[r][c]));
-      setStatus(complete ? "Completed" : "Finished entering moves");
+      await delay(Math.max(100, Number(delayEl.value)));
+      setStatus(verifySolution(solution) ? "Completed" : "Finished entering moves");
     } catch (error) {
       setStatus(error.message);
     } finally {
