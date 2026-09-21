@@ -38,6 +38,13 @@ async function getBookBuffer() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "clearBookCache") {
+    cachedBookBuffer = null;
+    cachedBookName = "";
+    sendResponse({ok: true});
+    return;
+  }
+
   if (message?.type === "bookInfo") {
     readActiveBook()
       .then(book => sendResponse({
