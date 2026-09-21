@@ -84,16 +84,23 @@ async function getBookSources() {
   return sources;
 }
 
-function chooseRandomBook(sources) {
-  if (sources.length === 1) {
-    lastRandomBookId = sources[0].id;
-    return sources[0];
+function chooseRandomBookOrder(sources) {
+  const remaining = sources.slice();
+  const order = [];
+
+  while (remaining.length) {
+    const candidates = order.length
+      ? remaining
+      : remaining.filter(source => source.id !== lastRandomBookId);
+    const pool = candidates.length ? candidates : remaining;
+    const index = Math.floor(Math.random() * pool.length);
+    const selected = pool[index];
+    order.push(selected);
+    remaining.splice(remaining.indexOf(selected), 1);
   }
 
-  const candidates = sources.filter(source => source.id !== lastRandomBookId);
-  const selected = candidates[Math.floor(Math.random() * candidates.length)] || sources[0];
-  lastRandomBookId = selected.id;
-  return selected;
+  lastRandomBookId = order[0]?.id || "";
+  return order;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -140,31 +147,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
-        let source = sources.find(book => book.id === message.bookMode);
-        if (!source) source = chooseRandomBook(sources);
+        const selected = sources.find(book => book.id === message.bookMode);
+        const order = selected ? [selected] : chooseRandomBookOrder(sources);
+        let lastError = null;
 
-        const book = await getBookSource(source.id);
-        if (!book) {
-          sendResponse({ok: true, found: false, moves: [], name: "", sourceId: source.id});
-          return;
+        for (const source of order) {
+          try {
+            const book = await getBookSource(source.id);
+            if (!book) continue;
+
+            const moves = CMH_BOOK.lookup(
+              book.buffer,
+              message.position,
+              message.side,
+              message.castlingRights || 0,
+              null,
+              8
+            );
+
+            if (moves.length) {
+              sendResponse({
+                ok: true,
+                found: true,
+                moves,
+                name: book.name,
+                sourceId: book.id
+              });
+              return;
+            }
+          } catch (error) {
+            lastError = error;
+          }
         }
 
-        const moves = CMH_BOOK.lookup(
-          book.buffer,
-          message.position,
-          message.side,
-          message.castlingRights || 0,
-          null,
-          8
-        );
-
-        sendResponse({
-          ok: true,
-          found: moves.length > 0,
-          moves,
-          name: book.name,
-          sourceId: book.id
-        });
+        if (lastError && !selected) throw lastError;
+        sendResponse({ok: true, found: false, moves: [], name: "", sourceId: ""});
       })
       .catch(error => sendResponse({ok: false, error: error.message}));
     return true;
