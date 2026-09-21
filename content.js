@@ -6,6 +6,7 @@
   let showAlternatives = true;
   let bookEnabled = true;
   let bookMode = "random";
+  let engineDepth = 4;
   let busy = false;
   let lastPositionKey = "";
   let lastResult = null;
@@ -27,6 +28,7 @@
       showAlternatives,
       bookEnabled,
       bookMode,
+      engineDepth,
       bookName: lastBookName
     };
   }
@@ -286,13 +288,15 @@
         lastBookName = "";
       }
 
-      if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer")) return stateResponse();
+      if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer") &&
+          (lastResult?.book || lastResult?.depth === engineDepth)) return stateResponse();
 
       setStatus("Thinking...", "Checking the opening book before engine search.");
       await new Promise(resolve => setTimeout(resolve, 0));
 
       const bookResult = await lookupBook(position, side);
-      const result = bookResult || engine.search(position, side, 4, 40000, 4);
+      const nodeLimit = ({2: 25000, 3: 50000, 4: 100000, 5: 220000, 6: 400000})[engineDepth] || 100000;
+      const result = bookResult || engine.search(position, side, engineDepth, nodeLimit, 4);
 
       if (!result) {
         clearArrows(board);
@@ -362,6 +366,17 @@
       if (board && lastResult && !hidden) drawArrows(board, lastResult);
       sendResponse(stateResponse());
       return;
+    }
+
+    if (message?.type === "setEngineDepth") {
+      const value = Number(message.value);
+      if (!Number.isInteger(value) || value < 2 || value > 6) {
+        sendResponse({ok: false, error: "Engine depth must be between 2 and 6."});
+        return;
+      }
+      engineDepth = value;
+      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
+      return true;
     }
 
     if (message?.type === "setBookEnabled") {
