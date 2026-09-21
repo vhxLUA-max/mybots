@@ -10,7 +10,7 @@
   <main class="cmh-popup">
     <header class="cmh-header">
       <div>
-        <div class="cmh-eyebrow">LOCAL ENGINE</div>
+        <div class="cmh-eyebrow">LOCAL CHESS ENGINE</div>
         <h1>Chess Move Helper</h1>
       </div>
       <div class="cmh-dot" id="cmh-dot"></div>
@@ -37,12 +37,18 @@
 
       <div class="cmh-option">
         <div>
-          <div class="cmh-option-title">Hide arrows</div>
-          <div class="cmh-option-subtitle">Keep the engine running in the background</div>
+          <div class="cmh-option-title">Opening book</div>
+          <div class="cmh-option-subtitle" id="cmh-book-status">No Polyglot book loaded</div>
         </div>
-        <button class="cmh-toggle" id="cmh-hidden" aria-pressed="false">
+        <button class="cmh-toggle cmh-on" id="cmh-book-enabled" aria-pressed="true">
           <span></span>
         </button>
+      </div>
+
+      <div class="cmh-book-row">
+        <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
+        <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
+        <button class="cmh-book-clear" id="cmh-book-clear">Clear</button>
       </div>
     </section>
 
@@ -56,7 +62,7 @@
       </div>
     </section>
 
-    <footer class="cmh-footer">Built-in local engine • No Stockfish required</footer>
+    <footer class="cmh-footer">Polyglot .bin books • Local engine fallback</footer>
   </main>
   <script src="popup.js"></script>
 </body>
