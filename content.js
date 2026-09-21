@@ -100,8 +100,10 @@
 
   function getSideToMove() {
     const activeClock = document.querySelector(".clock-component.clock-player-turn");
-    if (activeClock?.classList.contains("clock-white")) return "w";
-    if (activeClock?.classList.contains("clock-black")) return "b";
+    if (activeClock) {
+      if (activeClock.classList.contains("clock-white") || activeClock.querySelector(".clock-white")) return "w";
+      if (activeClock.classList.contains("clock-black") || activeClock.querySelector(".clock-black")) return "b";
+    }
 
     const selected = document.querySelector("#analysis [data-node].selected, #analysis [data-node].selected *");
     const selectedNode = selected?.closest("[data-node]");
