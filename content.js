@@ -82,13 +82,18 @@
   }
 
   function getSideToMove() {
+    const activeClock = document.querySelector(".clock-component.clock-player-turn");
+    if (activeClock?.classList.contains("clock-white")) return "w";
+    if (activeClock?.classList.contains("clock-black")) return "b";
+
     const selected = document.querySelector("#analysis [data-node].selected, #analysis [data-node].selected *");
     const selectedNode = selected?.closest("[data-node]");
 
     if (selectedNode) {
       const value = selectedNode.getAttribute("data-node") || "";
-      const match = value.match(/-(\d+)$/);
-      if (match) return Number(match[1]) % 2 === 0 ? "b" : "w";
+      const numbers = value.match(/\d+/g);
+      const moveNumber = numbers?.[numbers.length - 1];
+      if (moveNumber !== undefined) return Number(moveNumber) % 2 === 0 ? "w" : "b";
     }
 
     const urlMove = new URL(location.href).searchParams.get("move");
