@@ -1,16 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Sudoku Auto Player",
+  "name": "Chess Move Helper",
   "version": "1.0.0",
-  "description": "Reads the current Sudoku.com board, solves it locally, and enters the solution through the page controls.",
+  "description": "Reads Chess.com analysis positions and shows the current Stockfish move as an arrow.",
   "content_scripts": [
     {
-      "matches": ["https://sudoku.com/*"],
+      "matches": ["https://www.chess.com/analysis*"],
       "js": ["content.js"],
       "css": ["styles.css"],
-      "run_at": "document_end",
-      "world": "MAIN"
+      "run_at": "document_end"
     }
   ],
-  "host_permissions": ["https://sudoku.com/*"]
+  "host_permissions": ["https://www.chess.com/*"]
 }

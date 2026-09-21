@@ -1,4 +1,4 @@
-.sda-panel {
+.cmh-panel {
   position: fixed;
   top: 16px;
   right: 16px;
@@ -12,26 +12,25 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
-.sda-title {
+.cmh-title {
   font-size: 15px;
   font-weight: 700;
   margin-bottom: 8px;
 }
 
-.sda-status {
+.cmh-status {
   min-height: 18px;
   margin-bottom: 10px;
   opacity: 0.9;
   overflow-wrap: anywhere;
 }
 
-.sda-row {
+.cmh-row {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
 }
 
-.sda-button {
+.cmh-button {
   flex: 1;
   border: 0;
   border-radius: 8px;
@@ -42,32 +41,33 @@
   font: inherit;
 }
 
-.sda-button:hover {
+.cmh-button:hover {
   background: #4a4a56;
 }
 
-.sda-primary {
+.cmh-primary {
   background: #2f7df6;
 }
 
-.sda-primary:hover {
+.cmh-primary:hover {
   background: #2569d3;
 }
 
-.sda-stop {
-  background: #9d3b3b;
+.cmh-arrow-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  pointer-events: none;
+  overflow: visible;
 }
 
-.sda-stop:hover {
-  background: #822f2f;
-}
-
-.sda-speed {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sda-speed input {
-  flex: 1;
+.cmh-arrow {
+  color: #39e56b;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  fill: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }

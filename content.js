@@ -1,353 +1,435 @@
 (() => {
-  if (window.__sudokuAutoPlayerLoaded) return;
-  window.__sudokuAutoPlayerLoaded = true;
-
-  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-  let stopped = false;
-  let busy = false;
-  let currentSolution = null;
-  function getLiveGame() {
-    if (!self.webpackChunk || !Array.isArray(self.webpackChunk)) return null;
-
-    let webpackRequire;
-
-    try {
-      self.webpackChunk.push([[Date.now()], {}, (require) => {
-        webpackRequire = require;
-      }]);
-
-      if (typeof webpackRequire !== "function") return null;
-
-      const store = webpackRequire(62351)?.default;
-      const game = store?.state?.currentGame;
-
-      if (!game || !Array.isArray(game.values) || game.values.length !== 81) return null;
-
-      return {
-        board: game.values.map((cell) => Number(cell?.val) || 0),
-        editable: game.values.map((cell) => Boolean(cell?.editable)),
-        solution: Array.isArray(game.solution)
-          ? game.solution.map((value) => Number(value) || 0)
-          : typeof game.solution === "string"
-            ? game.solution.split("").map((value) => Number(value) || 0)
-            : null,
-        id: game.id ?? null,
-        mission: typeof game.mission === "string" ? game.mission : "",
-        difficulty: typeof game.difficulty === "string" ? game.difficulty : "",
-        mode: typeof game.mode === "string" ? game.mode : ""
-      };
-    } catch {
-      return null;
-    }
-  }
+  if (window.__chessMoveHelperLoaded) return;
+  window.__chessMoveHelperLoaded = true;
 
   const panel = document.createElement("div");
-  panel.className = "sda-panel";
+  panel.className = "cmh-panel";
   panel.innerHTML = [
-    '<div class="sda-title">Sudoku Auto Player</div>',
-    '<div class="sda-status" id="sda-status">Ready</div>',
-    '<div class="sda-row">',
-    '<button class="sda-button" id="sda-scan">Scan</button>',
-    '<button class="sda-button" id="sda-solve">Solve</button>',
-    '</div>',
-    '<div class="sda-row">',
-    '<button class="sda-button sda-primary" id="sda-play">Auto Play</button>',
-    '<button class="sda-button sda-stop" id="sda-stop">Stop</button>',
-    '</div>',
-    '<label class="sda-speed">Delay <input id="sda-delay" type="range" min="50" max="500" step="10" value="140"><span id="sda-delay-value">140ms</span></label>'
+    '<div class="cmh-title">Chess Move Helper</div>',
+    '<div class="cmh-status" id="cmh-status">Waiting for board...</div>',
+    '<div class="cmh-row">',
+    '<button class="cmh-button cmh-primary" id="cmh-scan">Scan</button>',
+    '<button class="cmh-button" id="cmh-hide">Hide</button>',
+    '</div>'
   ].join("");
   document.documentElement.appendChild(panel);
 
-  const statusEl = panel.querySelector("#sda-status");
-  const delayEl = panel.querySelector("#sda-delay");
-  const delayValueEl = panel.querySelector("#sda-delay-value");
+  const statusEl = panel.querySelector("#cmh-status");
+  let hidden = false;
+  let busy = false;
+  let lastPositionKey = "";
 
   const setStatus = (text) => {
     statusEl.textContent = text;
   };
 
-  delayEl.addEventListener("input", () => {
-    delayValueEl.textContent = delayEl.value + "ms";
-  });
+  function getBoardElement() {
+    return document.querySelector("wc-chess-board.board, wc-chess-board");
+  }
 
-  function normalizeValue(value) {
+  function parseSquareNumber(value) {
     const number = Number(value);
-    return Number.isInteger(number) && number >= 1 && number <= 9 ? number : 0;
+    if (!Number.isInteger(number)) return null;
+    const rank = Math.floor(number / 10);
+    const file = number % 10 - 1;
+    if (rank < 1 || rank > 8 || file < 0 || file > 7) return null;
+    return { file, rank };
   }
 
-  function normalizeSolution(solution) {
-    if (Array.isArray(solution)) {
-      const values = solution.map(normalizeValue);
-      return values.length === 81 && values.every(Boolean) ? values : null;
-    }
-
-    if (typeof solution === "string") {
-      const values = solution.split("").map(normalizeValue);
-      return values.length === 81 && values.every(Boolean) ? values : null;
-    }
-
-    return null;
+  function squareIndex(square) {
+    return (square.rank - 1) * 8 + square.file;
   }
 
-  async function readGame() {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const live = getLiveGame();
+  function indexToSquare(index) {
+    return {
+      file: index % 8,
+      rank: Math.floor(index / 8) + 1
+    };
+  }
 
-      if (live) {
-        const board = live.board.map(normalizeValue);
-        const editable = live.editable.map(Boolean);
-        const solution = normalizeSolution(live.solution);
+  function readPosition(board) {
+    const pieces = Array(64).fill(null);
+    const pieceNodes = board.querySelectorAll(".piece");
 
-        return {
-          board,
-          editable,
-          solution,
-          live: true,
-          id: live.id,
-          mission: live.mission,
-          difficulty: live.difficulty,
-          mode: live.mode
-        };
+    for (const node of pieceNodes) {
+      const squareClass = Array.from(node.classList).find(value => /^square-\d+$/.test(value));
+      const pieceClass = Array.from(node.classList).find(value => /^[wb][pnbrqk]$/.test(value));
+      if (!squareClass || !pieceClass) continue;
+
+      const square = parseSquareNumber(squareClass.slice(7));
+      if (!square) continue;
+
+      const piece = pieceClass[0] === "w" ? pieceClass[1].toUpperCase() : pieceClass[1];
+      pieces[squareIndex(square)] = piece;
+    }
+
+    return pieces;
+  }
+
+  function getOrientation(board) {
+    const labels = Array.from(board.querySelectorAll(".coordinates text"))
+      .map(node => node.textContent.trim())
+      .filter(Boolean);
+
+    const rankLabels = labels.filter(value => /^[1-8]$/.test(value));
+    const fileLabels = labels.filter(value => /^[a-h]$/.test(value));
+
+    return {
+      flipped: rankLabels[0] === "1" || fileLabels[0] === "h"
+    };
+  }
+
+  function getSideToMove() {
+    const selected = document.querySelector("#analysis [data-node].selected, #analysis [data-node].selected *");
+    const selectedNode = selected?.closest("[data-node]");
+    if (selectedNode) {
+      const value = selectedNode.getAttribute("data-node") || "";
+      const match = value.match(/-(\d+)$/);
+      if (match) return Number(match[1]) % 2 === 0 ? "b" : "w";
+    }
+
+    return "w";
+  }
+
+  function getEngineLine() {
+    const node = document.querySelector("#moves-0.analysis-moves, #analysis .analysis-moves");
+    if (!node) return null;
+
+    const text = node.textContent.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+    if (!text) return null;
+
+    const firstToken = text
+      .replace(/^\d+\s*\.\.\.\s*/, "")
+      .replace(/^\d+\s*\.\s*/, "")
+      .trim()
+      .split(" ")[0];
+
+    if (!firstToken) return null;
+
+    const depthText = document.querySelector("#stockfish-depth, .stockfish-info")?.textContent || "";
+    const depthMatch = depthText.match(/depth\s*=\s*(\d+)/i);
+
+    return {
+      line: text,
+      san: firstToken,
+      depth: depthMatch ? Number(depthMatch[1]) : null
+    };
+  }
+
+  function pathClear(position, source, target) {
+    const df = Math.sign(target.file - source.file);
+    const dr = Math.sign(target.rank - source.rank);
+    let file = source.file + df;
+    let rank = source.rank + dr;
+
+    while (file !== target.file || rank !== target.rank) {
+      if (position[(rank - 1) * 8 + file]) return false;
+      file += df;
+      rank += dr;
+    }
+
+    return true;
+  }
+
+  function movementMatches(piece, source, target, san) {
+    const df = target.file - source.file;
+    const dr = target.rank - source.rank;
+    const adf = Math.abs(df);
+    const adr = Math.abs(dr);
+    const side = piece === piece.toUpperCase() ? "w" : "b";
+
+    if (piece.toUpperCase() === "P") {
+      const direction = side === "w" ? 1 : -1;
+      const startRank = side === "w" ? 2 : 7;
+      if (san.includes("x")) return adf === 1 && dr === direction;
+      return df === 0 && (dr === direction || (dr === 2 * direction && source.rank === startRank));
+    }
+
+    if (piece.toUpperCase() === "N") return (adf === 1 && adr === 2) || (adf === 2 && adr === 1);
+    if (piece.toUpperCase() === "K") return Math.max(adf, adr) === 1;
+    if (piece.toUpperCase() === "B") return adf === adr && adf > 0;
+    if (piece.toUpperCase() === "R") return (df === 0 || dr === 0) && (df !== 0 || dr !== 0);
+    if (piece.toUpperCase() === "Q") return ((adf === adr) && adf > 0) || (df === 0 || dr === 0) && (df !== 0 || dr !== 0);
+
+    return false;
+  }
+
+  function isSquareAttacked(position, targetIndex, bySide) {
+    const target = indexToSquare(targetIndex);
+    const pawn = bySide === "w" ? "P" : "p";
+    const pawnRank = bySide === "w" ? target.rank - 1 : target.rank + 1;
+    for (const file of [target.file - 1, target.file + 1]) {
+      if (file < 0 || file > 7 || pawnRank < 1 || pawnRank > 8) continue;
+      if (position[(pawnRank - 1) * 8 + file] === pawn) return true;
+    }
+
+    const knight = bySide === "w" ? "N" : "n";
+    for (const [df, dr] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) {
+      const file = target.file + df;
+      const rank = target.rank + dr;
+      if (file < 0 || file > 7 || rank < 1 || rank > 8) continue;
+      if (position[(rank - 1) * 8 + file] === knight) return true;
+    }
+
+    const king = bySide === "w" ? "K" : "k";
+    for (const df of [-1, 0, 1]) {
+      for (const dr of [-1, 0, 1]) {
+        if (!df && !dr) continue;
+        const file = target.file + df;
+        const rank = target.rank + dr;
+        if (file < 0 || file > 7 || rank < 1 || rank > 8) continue;
+        if (position[(rank - 1) * 8 + file] === king) return true;
       }
-
-      await delay(100);
     }
 
-    throw new Error("Sudoku.com current game is not available");
-  }
-
-  function getGameKey(game) {
-    if (!game.live) return null;
-
-    return [
-      location.pathname,
-      game.mode,
-      game.difficulty,
-      String(game.id ?? ""),
-      game.mission,
-      game.solution ? game.solution.join("") : ""
-    ].join("|");
-  }
-
-  function solveSudoku(input) {
-    const board = input.map(row => row.slice());
-    const rows = Array(9).fill(0);
-    const cols = Array(9).fill(0);
-    const boxes = Array(9).fill(0);
-    const FULL = 0x1ff;
-
-    for (let r = 0; r < 9; r++) {
-      for (let c = 0; c < 9; c++) {
-        const value = board[r][c];
-        if (!value) continue;
-        const bit = 1 << (value - 1);
-        const box = Math.floor(r / 3) * 3 + Math.floor(c / 3);
-        if ((rows[r] & bit) || (cols[c] & bit) || (boxes[box] & bit)) return null;
-        rows[r] |= bit;
-        cols[c] |= bit;
-        boxes[box] |= bit;
-      }
-    }
-
-    function search() {
-      let bestR = -1;
-      let bestC = -1;
-      let bestMask = 0;
-      let bestCount = 10;
-
-      for (let r = 0; r < 9; r++) {
-        for (let c = 0; c < 9; c++) {
-          if (board[r][c]) continue;
-          const box = Math.floor(r / 3) * 3 + Math.floor(c / 3);
-          const mask = FULL & ~(rows[r] | cols[c] | boxes[box]);
-          const count = 32 - Math.clz32(mask);
-          if (count === 0) return false;
-          if (count < bestCount) {
-            bestCount = count;
-            bestR = r;
-            bestC = c;
-            bestMask = mask;
-            if (count === 1) break;
-          }
+    for (const [df, dr, first, second] of [
+      [1,0,"R","Q"],[-1,0,"R","Q"],[0,1,"R","Q"],[0,-1,"R","Q"],
+      [1,1,"B","Q"],[1,-1,"B","Q"],[-1,1,"B","Q"],[-1,-1,"B","Q"]
+    ]) {
+      let file = target.file + df;
+      let rank = target.rank + dr;
+      while (file >= 0 && file < 8 && rank >= 1 && rank <= 8) {
+        const piece = position[(rank - 1) * 8 + file];
+        if (piece) {
+          const normalized = piece.toUpperCase();
+          const isAttacker = piece === (bySide === "w" ? first : first.toLowerCase()) ||
+            piece === (bySide === "w" ? second : second.toLowerCase());
+          if (isAttacker) return true;
+          break;
         }
-        if (bestCount === 1) break;
+        file += df;
+        rank += dr;
+      }
+    }
+
+    return false;
+  }
+
+  function moveWouldLeaveKingInCheck(position, sourceIndex, targetIndex, promotion) {
+    const next = position.slice();
+    const moving = next[sourceIndex];
+    next[sourceIndex] = null;
+
+    const source = indexToSquare(sourceIndex);
+    const target = indexToSquare(targetIndex);
+
+    if (moving && moving.toUpperCase() === "P" && source.file !== target.file && !next[targetIndex]) {
+      const capturedIndex = (source.rank === (moving === "P" ? 5 : 4))
+        ? (source.rank - 1) * 8 + target.file
+        : (source.rank + 1) * 8 + target.file;
+      if (next[capturedIndex] && next[capturedIndex].toUpperCase() === "P") next[capturedIndex] = null;
+    }
+
+    next[targetIndex] = promotion
+      ? (moving === "P" ? promotion.toUpperCase() : promotion.toLowerCase())
+      : moving;
+
+    let kingIndex = -1;
+    const king = moving === moving?.toUpperCase() ? "K" : "k";
+    for (let i = 0; i < next.length; i++) {
+      if (next[i] === king) {
+        kingIndex = i;
+        break;
+      }
+    }
+
+    if (kingIndex === -1) return false;
+    return isSquareAttacked(next, kingIndex, king === "K" ? "b" : "w");
+  }
+
+  function parseSanMove(san, position, side) {
+    let value = san.replace(/[!?]+$/g, "").replace(/[+#]+$/g, "");
+    if (/^(O-O|0-0)$/i.test(value)) {
+      return side === "w" ? { source: { file: 4, rank: 1 }, target: { file: 6, rank: 1 }, san } :
+        { source: { file: 4, rank: 8 }, target: { file: 6, rank: 8 }, san };
+    }
+    if (/^(O-O-O|0-0-0)$/i.test(value)) {
+      return side === "w" ? { source: { file: 4, rank: 1 }, target: { file: 2, rank: 1 }, san } :
+        { source: { file: 4, rank: 8 }, target: { file: 2, rank: 8 }, san };
+    }
+
+    const promotionMatch = value.match(/=([QRBN])$/i);
+    const promotion = promotionMatch ? promotionMatch[1].toUpperCase() : null;
+    if (promotion) value = value.slice(0, -2);
+
+    const destinationMatch = value.match(/([a-h][1-8])$/i);
+    if (!destinationMatch) return null;
+
+    const destination = {
+      file: destinationMatch[1].toLowerCase().charCodeAt(0) - 97,
+      rank: Number(destinationMatch[1][1])
+    };
+
+    let prefix = value.slice(0, destinationMatch.index);
+    const capture = prefix.includes("x");
+    prefix = prefix.replace("x", "");
+
+    let pieceType = "P";
+    if (/^[KQRBN]/i.test(prefix)) {
+      pieceType = prefix[0].toUpperCase();
+      prefix = prefix.slice(1);
+    }
+
+    const disFile = prefix.length === 1 && /[a-h]/i.test(prefix) ? prefix.toLowerCase() : null;
+    const disRank = prefix.length === 1 && /[1-8]/.test(prefix) ? Number(prefix) : null;
+
+    const candidates = [];
+    for (let index = 0; index < position.length; index++) {
+      const piece = position[index];
+      if (!piece || piece.toUpperCase() !== pieceType) continue;
+      if ((side === "w" && piece !== piece.toUpperCase()) || (side === "b" && piece !== piece.toLowerCase())) continue;
+
+      const source = indexToSquare(index);
+      if (disFile && source.file !== disFile.charCodeAt(0) - 97) continue;
+      if (disRank && source.rank !== disRank) continue;
+      if (!movementMatches(piece, source, destination, capture ? "x" : "")) continue;
+
+      if (pieceType !== "N" && pieceType !== "K" && pieceType !== "P" && !pathClear(position, source, destination)) continue;
+      if (pieceType === "P" && !capture && source.file !== destination.file) continue;
+      if (pieceType === "P" && Math.abs(destination.rank - source.rank) === 2) {
+        const middle = (source.rank + destination.rank) / 2;
+        if (position[(middle - 1) * 8 + source.file]) continue;
       }
 
-      if (bestR === -1) return true;
-
-      const box = Math.floor(bestR / 3) * 3 + Math.floor(bestC / 3);
-      for (let mask = bestMask; mask; mask &= mask - 1) {
-        const bit = mask & -mask;
-        const value = 32 - Math.clz32(bit);
-        board[bestR][bestC] = value;
-        rows[bestR] |= bit;
-        cols[bestC] |= bit;
-        boxes[box] |= bit;
-
-        if (search()) return true;
-
-        board[bestR][bestC] = 0;
-        rows[bestR] ^= bit;
-        cols[bestC] ^= bit;
-        boxes[box] ^= bit;
-      }
-
-      return false;
+      const targetIndex = squareIndex(destination);
+      if (moveWouldLeaveKingInCheck(position, index, targetIndex, promotion)) continue;
+      candidates.push({ source, target: destination, san });
     }
 
-    return search() ? board : null;
+    return candidates[0] || null;
   }
 
-  function boardFromFlat(values) {
-    return Array.from({ length: 9 }, (_, row) => values.slice(row * 9, row * 9 + 9));
+  function clearArrow(board) {
+    board.querySelector(".cmh-arrow-layer")?.remove();
   }
 
-  function getEditableCells(editable) {
-    const cells = [];
-    for (let i = 0; i < editable.length; i++) {
-      if (editable[i]) cells.push(i);
-    }
-    return cells;
+  function drawArrow(board, move) {
+    clearArrow(board);
+    if (hidden) return;
+
+    const orientation = getOrientation(board);
+    const sourceX = orientation.flipped ? 7 - move.source.file : move.source.file;
+    const targetX = orientation.flipped ? 7 - move.target.file : move.target.file;
+    const sourceY = orientation.flipped ? move.source.rank - 1 : 8 - move.source.rank;
+    const targetY = orientation.flipped ? move.target.rank - 1 : 8 - move.target.rank;
+
+    const sourcePoint = { x: sourceX * 12.5 + 6.25, y: sourceY * 12.5 + 6.25 };
+    const targetPoint = { x: targetX * 12.5 + 6.25, y: targetY * 12.5 + 6.25 };
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.className.baseVal = "cmh-arrow-layer";
+    svg.setAttribute("viewBox", "0 0 100 100");
+
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", "cmh-arrow-head");
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "8.5");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "5");
+    marker.setAttribute("markerHeight", "5");
+    marker.setAttribute("orient", "auto");
+    const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    head.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+    head.setAttribute("fill", "currentColor");
+    marker.appendChild(head);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(sourcePoint.x));
+    line.setAttribute("y1", String(sourcePoint.y));
+    line.setAttribute("x2", String(targetPoint.x));
+    line.setAttribute("y2", String(targetPoint.y));
+    line.setAttribute("marker-end", "url(#cmh-arrow-head)");
+    line.setAttribute("class", "cmh-arrow");
+    svg.appendChild(line);
+
+    board.appendChild(svg);
   }
 
-  function dispatchKey(key, code, keyCode) {
-    window.dispatchEvent(new KeyboardEvent("keydown", {
-      key,
-      code,
-      keyCode,
-      which: keyCode,
-      bubbles: true,
-      cancelable: true
-    }));
+  function getPositionKey(position, side) {
+    return position.map((piece, index) => piece ? index + ":" + piece : "").filter(Boolean).join("|") + "|" + side;
   }
 
-  function moveToNextCell(index) {
-    if (index === 80) return;
-
-    if ((index + 1) % 9 === 0) {
-      dispatchKey("ArrowDown", "ArrowDown", 40);
-      for (let i = 0; i < 9; i++) {
-        dispatchKey("ArrowLeft", "ArrowLeft", 37);
-      }
-      return;
-    }
-
-    dispatchKey("ArrowRight", "ArrowRight", 39);
-  }
-
-  async function verifySolution(solution) {
-    try {
-      const game = await readGame();
-      return game.board.every((value, index) => normalizeValue(value) === solution[index]);
-    } catch {
-      return false;
-    }
+  function moveName(move) {
+    const files = "abcdefgh";
+    return files[move.source.file] + move.source.rank + files[move.target.file] + move.target.rank;
   }
 
   async function scan() {
-    const game = await readGame();
-    const empty = game.editable.filter((editable, index) => editable && game.board[index] === 0).length;
-    setStatus("Scanned: " + empty + " empty");
-    return game;
-  }
-
-  async function solveOnly() {
     if (busy) return;
-
-    try {
-      const game = await scan();
-      let solution = game.solution;
-
-      if (!solution) {
-        const solved = solveSudoku(boardFromFlat(game.board));
-        solution = solved ? solved.flat() : null;
-      }
-
-      if (!solution) throw new Error("The current board is invalid or has no solution");
-
-      currentSolution = solution;
-      setStatus("Solved: " + game.editable.filter(Boolean).length + " editable cells");
-    } catch (error) {
-      setStatus(error.message);
-      currentSolution = null;
-    }
-  }
-
-  async function autoPlay() {
-    if (busy) return;
-
     busy = true;
-    stopped = false;
 
     try {
-      const game = await readGame();
-      let solution = game.solution;
-      const startingGameKey = getGameKey(game);
-
-      if (!solution) {
-        const solved = solveSudoku(boardFromFlat(game.board));
-        solution = solved ? solved.flat() : null;
+      const board = getBoardElement();
+      if (!board) {
+        setStatus("Waiting for Chess.com board...");
+        return;
       }
 
-      if (!solution) throw new Error("The current board is invalid or has no solution");
-
-      currentSolution = solution;
-      const editableCells = getEditableCells(game.editable);
-
-      setStatus("Playing 0/" + editableCells.length);
-      window.dispatchEvent(new Event("focus"));
-
-      for (let i = 0; i < 81; i++) {
-        if (stopped) {
-          setStatus("Stopped at " + i + "/81");
-          return;
-        }
-
-        if (startingGameKey) {
-          const liveGame = await readGame();
-          const liveGameKey = getGameKey(liveGame);
-
-          if (!liveGameKey || liveGameKey !== startingGameKey) {
-            stopped = true;
-            setStatus("New game detected. Stopped.");
-            return;
-          }
-        }
-
-        if (game.editable[i] && game.board[i] !== solution[i]) {
-          const key = String(solution[i]);
-          const keyCode = 48 + solution[i];
-          dispatchKey(key, "Digit" + key, keyCode);
-        }
-
-        moveToNextCell(i);
-
-        if (game.editable[i]) {
-          setStatus("Playing " + (editableCells.indexOf(i) + 1) + "/" + editableCells.length);
-        }
-
-        await delay(Number(delayEl.value));
+      const position = readPosition(board);
+      const pieceCount = position.filter(Boolean).length;
+      if (!pieceCount) {
+        clearArrow(board);
+        setStatus("Board not loaded");
+        return;
       }
 
-      await delay(Math.max(100, Number(delayEl.value)));
-      setStatus((await verifySolution(solution)) ? "Completed" : "Finished entering moves");
-    } catch (error) {
-      setStatus(error.message);
+      const side = getSideToMove();
+      const key = getPositionKey(position, side);
+      const engine = getEngineLine();
+
+      if (!engine) {
+        clearArrow(board);
+        setStatus("Waiting for Stockfish...");
+        lastPositionKey = key;
+        return;
+      }
+
+      if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer")) {
+        return;
+      }
+
+      const move = parseSanMove(engine.san, position, side);
+      if (!move) {
+        clearArrow(board);
+        setStatus("Could not map " + engine.san + " on this position");
+        lastPositionKey = key;
+        return;
+      }
+
+      drawArrow(board, move);
+      lastPositionKey = key;
+      setStatus(engine.san + " (" + moveName(move) + ")" + (engine.depth ? " | depth " + engine.depth : ""));
     } finally {
       busy = false;
     }
   }
 
-  panel.querySelector("#sda-scan").addEventListener("click", () => {
-    if (!busy) scan().catch(error => setStatus(error.message));
+  panel.querySelector("#cmh-scan").addEventListener("click", () => {
+    scan().catch(error => setStatus(error.message));
   });
 
-  panel.querySelector("#sda-solve").addEventListener("click", solveOnly);
+  panel.querySelector("#cmh-hide").addEventListener("click", () => {
+    hidden = !hidden;
+    const board = getBoardElement();
+    if (!board) return;
 
-  panel.querySelector("#sda-play").addEventListener("click", autoPlay);
+    if (hidden) {
+      clearArrow(board);
+      panel.querySelector("#cmh-hide").textContent = "Show";
+      return;
+    }
 
-  panel.querySelector("#sda-stop").addEventListener("click", () => {
-    stopped = true;
-    if (!busy) setStatus("Stopped");
+    panel.querySelector("#cmh-hide").textContent = "Hide";
+    lastPositionKey = "";
+    scan().catch(error => setStatus(error.message));
   });
+
+  setInterval(() => {
+    scan().catch(error => setStatus(error.message));
+  }, 700);
+
+  scan().catch(error => setStatus(error.message));
 })();
