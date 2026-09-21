@@ -5,6 +5,7 @@
   let hidden = false;
   let showAlternatives = true;
   let bookEnabled = true;
+  let bookMode = "random";
   let busy = false;
   let lastPositionKey = "";
   let lastResult = null;
@@ -25,6 +26,7 @@
       hidden,
       showAlternatives,
       bookEnabled,
+      bookMode,
       bookName: lastBookName
     };
   }
@@ -140,19 +142,30 @@
     clearArrows(board);
     if (hidden) return;
 
-    const candidates = result.alternatives?.length
+    const candidates = (result.alternatives?.length
       ? result.alternatives
-      : [result];
+      : [result]).slice(0, 4);
     const moves = showAlternatives ? candidates : [candidates[0]];
+    const entries = moves.map((move, index) => ({
+      move,
+      index,
+      category: classifyMove(move, index, result.score, result.book)
+    }));
+    const drawEntries = entries.sort((a, b) => {
+      if (a.index === 0) return 1;
+      if (b.index === 0) return -1;
+      return a.index - b.index;
+    });
     const orientation = getOrientation(board);
-    const categories = new Set();
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("cmh-arrow-layer");
     svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("shape-rendering", "geometricPrecision");
 
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    for (const category of ["best", "good", "ok", "bad"]) {
+    const categories = [...new Set(entries.map(entry => entry.category))];
+    for (const category of categories) {
       const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
       marker.setAttribute("id", "cmh-arrow-head-" + category);
       marker.setAttribute("viewBox", "0 0 10 10");
@@ -195,7 +208,7 @@
       svg.appendChild(line);
     });
 
-    if (categories.size) board.appendChild(svg);
+    if (entries.length) board.appendChild(svg);
   }
 
   function getPositionKey(position, side) {
@@ -217,6 +230,7 @@
         type: "bookLookup",
         position,
         side,
+        bookMode,
         castlingRights: getCastlingRights(position)
       });
 
@@ -231,14 +245,15 @@
         nodes: 0,
         alternatives: response.moves,
         book: true,
-        bookName: response.name
+        bookName: response.name,
+        bookSourceId: response.sourceId
       };
     } catch {
       return null;
     }
   }
 
-  async function scan() {
+  async function scan(force = false) {
     if (busy) return stateResponse();
     busy = true;
 
@@ -265,6 +280,11 @@
 
       const side = getSideToMove();
       const key = getPositionKey(position, side);
+
+      if (force) {
+        lastPositionKey = "";
+        lastBookName = "";
+      }
 
       if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer")) return stateResponse();
 
@@ -313,7 +333,7 @@
     }
 
     if (message?.type === "scan") {
-      scan()
+      scan(true)
         .then(sendResponse)
         .catch(error => sendResponse({ ok: false, error: error.message }));
       return true;
@@ -351,10 +371,18 @@
       return true;
     }
 
+    if (message?.type === "setBookMode") {
+      bookMode = message.value || "random";
+      lastPositionKey = "";
+      lastBookName = "";
+      scan(true).then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
+      return true;
+    }
+
     if (message?.type === "bookChanged") {
       lastPositionKey = "";
       lastBookName = "";
-      scan().catch(() => {});
+      scan(true).catch(() => {});
       sendResponse({ok: true});
       return;
     }

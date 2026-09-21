@@ -246,3 +246,33 @@ body {
   opacity: 0.4;
   cursor: default;
 }
+
+.cmh-book-mode {
+  padding: 10px 14px 12px;
+  border-top: 1px solid #242934;
+}
+
+.cmh-book-mode-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #80899a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cmh-book-mode select {
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid #303645;
+  border-radius: 8px;
+  outline: none;
+  background: #1b1f27;
+  color: #dce2ec;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.cmh-book-mode select:focus {
+  border-color: #2f7df6;
+}

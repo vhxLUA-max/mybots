@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Chess Move Helper",
-  "version": "1.3.0",
-  "description": "Scans Chess.com boards and analyzes positions locally with a built-in chess engine and Polyglot opening books.",
+  "version": "1.4.0",
+  "description": "Scans Chess.com boards and analyzes positions locally with a built-in chess engine and randomized Polyglot opening books.",
   "action": {
     "default_title": "Chess Move Helper",
     "default_popup": "popup.html"

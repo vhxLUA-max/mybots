@@ -23,19 +23,22 @@
 .cmh-arrow.cmh-good {
   color: #43b7ff;
   stroke: currentColor;
-  opacity: 0.88;
+  stroke-width: 1.7;
+  opacity: 0.82;
 }
 
 .cmh-arrow.cmh-ok {
   color: #f5c451;
   stroke: currentColor;
-  opacity: 0.78;
+  stroke-width: 1.45;
+  opacity: 0.66;
 }
 
 .cmh-arrow.cmh-bad {
   color: #ff625f;
   stroke: currentColor;
-  opacity: 0.72;
+  stroke-width: 1.2;
+  opacity: 0.52;
 }
 
 .cmh-arrow-head.cmh-best {

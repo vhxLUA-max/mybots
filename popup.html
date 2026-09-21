@@ -38,11 +38,16 @@
       <div class="cmh-option">
         <div>
           <div class="cmh-option-title">Opening book</div>
-          <div class="cmh-option-subtitle" id="cmh-book-status">No Polyglot book loaded</div>
+          <div class="cmh-option-subtitle" id="cmh-book-status">Loading built-in books...</div>
         </div>
         <button class="cmh-toggle cmh-on" id="cmh-book-enabled" aria-pressed="true">
           <span></span>
         </button>
+      </div>
+
+      <div class="cmh-book-mode">
+        <label class="cmh-book-mode-label" for="cmh-book-mode">Book selection</label>
+        <select id="cmh-book-mode"></select>
       </div>
 
       <div class="cmh-book-row">
@@ -62,7 +67,7 @@
       </div>
     </section>
 
-    <footer class="cmh-footer">Polyglot .bin books • Local engine fallback</footer>
+    <footer class="cmh-footer">Randomized Polyglot books • Local engine fallback</footer>
   </main>
   <script src="popup.js"></script>
 </body>

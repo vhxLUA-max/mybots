@@ -5,6 +5,7 @@
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
   const bookEnabledButton = document.querySelector("#cmh-book-enabled");
+  const bookModeSelect = document.querySelector("#cmh-book-mode");
   const bookStatusEl = document.querySelector("#cmh-book-status");
   const bookFileInput = document.querySelector("#cmh-book-file");
   const bookClearButton = document.querySelector("#cmh-book-clear");
@@ -90,14 +91,29 @@
   async function loadBookInfo() {
     const response = await sendRuntimeMessage({type: "bookInfo"});
     if (!response?.ok) throw new Error(response?.error || "Book information failed.");
-    if (!response.loaded) {
-      bookStatusEl.textContent = "No Polyglot book loaded";
-      bookClearButton.disabled = true;
-      return;
+
+    bookModeSelect.replaceChildren();
+    const randomOption = document.createElement("option");
+    randomOption.value = "random";
+    randomOption.textContent = response.books?.length > 1 ? "Random each analysis" : "Available book";
+    bookModeSelect.appendChild(randomOption);
+
+    for (const book of response.books || []) {
+      const option = document.createElement("option");
+      option.value = book.id;
+      option.textContent = book.name + (book.builtin ? "" : " (uploaded)");
+      bookModeSelect.appendChild(option);
     }
 
-    bookStatusEl.textContent = response.name + " • " + formatBookSize(response.size);
-    bookClearButton.disabled = false;
+    if (response.loaded) {
+      bookStatusEl.textContent = response.books.length + " available • " + response.name + " uploaded";
+      bookClearButton.disabled = false;
+    } else {
+      bookStatusEl.textContent = response.books?.length
+        ? response.books.length + " built-in books available"
+        : "No Polyglot book loaded";
+      bookClearButton.disabled = true;
+    }
   }
 
   async function refreshState() {
@@ -107,6 +123,7 @@
     setToggle(alternativesButton, response.showAlternatives);
     setToggle(bookEnabledButton, response.bookEnabled);
     setStatus(response.status, response.detail, true);
+    bookModeSelect.value = response.bookMode || "random";
   }
 
   async function connect() {
@@ -119,8 +136,8 @@
       }
 
       tabId = tab.id;
-      await refreshState();
       await loadBookInfo();
+      await refreshState();
     } catch (error) {
       setStatus("Connect failed", "Refresh the Chess.com tab, then open the popup again.", false);
       detailEl.title = error.message;
@@ -163,6 +180,22 @@
     }
   });
 
+  bookModeSelect.addEventListener("change", async () => {
+    if (tabId === null) return;
+    try {
+      const response = await sendMessage({
+        type: "setBookMode",
+        value: bookModeSelect.value
+      });
+      if (!response?.ok) throw new Error(response?.error || "Book selection failed.");
+      setToggle(bookEnabledButton, response.bookEnabled);
+      bookModeSelect.value = response.bookMode || "random";
+      setStatus(response.status, response.detail, true);
+    } catch {
+      setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
+    }
+  });
+
   bookEnabledButton.addEventListener("click", async () => {
     if (tabId === null) return;
     try {
@@ -198,7 +231,8 @@
         await sendMessage({type: "bookChanged"});
       }
       await loadBookInfo();
-      setStatus("Book loaded", file.name + " will be used before local engine search.", true);
+      await refreshState();
+      setStatus("Book loaded", file.name + " is now available for random or manual selection.", true);
     } catch (error) {
       bookStatusEl.textContent = "Book load failed";
       setStatus("Book load failed", error.message, false);
@@ -216,7 +250,8 @@
         await sendMessage({type: "bookChanged"});
       }
       await loadBookInfo();
-      setStatus("Book cleared", "The local engine will handle opening positions.", true);
+      await refreshState();
+      setStatus("Book cleared", "Built-in books remain available for opening positions.", true);
     } catch (error) {
       setStatus("Clear failed", error.message, false);
       bookClearButton.disabled = false;
