@@ -2,26 +2,28 @@
   if (window.__chessMoveHelperLoaded) return;
   window.__chessMoveHelperLoaded = true;
 
-  const panel = document.createElement("div");
-  panel.className = "cmh-panel";
-  panel.innerHTML = [
-    '<div class="cmh-title">Chess Move Helper</div>',
-    '<div class="cmh-status" id="cmh-status">Waiting for board...</div>',
-    '<div class="cmh-row">',
-    '<button class="cmh-button cmh-primary" id="cmh-scan">Scan</button>',
-    '<button class="cmh-button" id="cmh-hide">Hide</button>',
-    '</div>'
-  ].join("");
-  document.documentElement.appendChild(panel);
-
-  const statusEl = panel.querySelector("#cmh-status");
   let hidden = false;
+  let showAlternatives = true;
   let busy = false;
   let lastPositionKey = "";
+  let lastResult = null;
+  let currentStatus = "Waiting for board...";
+  let currentDetail = "Open a Chess.com board to begin.";
 
-  const setStatus = (text) => {
-    statusEl.textContent = text;
-  };
+  function setStatus(status, detail) {
+    currentStatus = status;
+    currentDetail = detail || "";
+  }
+
+  function stateResponse() {
+    return {
+      ok: true,
+      status: currentStatus,
+      detail: currentDetail,
+      hidden,
+      showAlternatives
+    };
+  }
 
   function getBoardElement() {
     return document.querySelector("wc-chess-board.board, wc-chess-board");
@@ -97,57 +99,78 @@
     return "w";
   }
 
-  function clearArrow(board) {
+  function clearArrows(board) {
     board.querySelector(".cmh-arrow-layer")?.remove();
   }
 
-  function drawArrow(board, move) {
-    clearArrow(board);
+  function classifyMove(move, index, bestScore) {
+    if (index === 0) return "best";
+    const loss = bestScore - move.score;
+    if (loss <= 30) return "good";
+    if (loss <= 100) return "ok";
+    return "bad";
+  }
+
+  function drawArrows(board, result) {
+    clearArrows(board);
     if (hidden) return;
 
+    const candidates = result.alternatives?.length
+      ? result.alternatives
+      : [result];
+    const moves = showAlternatives ? candidates : [candidates[0]];
     const orientation = getOrientation(board);
-    const source = indexToSquare(move.from);
-    const target = indexToSquare(move.to);
-
-    const sourceX = orientation.flipped ? 7 - source.file : source.file;
-    const targetX = orientation.flipped ? 7 - target.file : target.file;
-    const sourceY = orientation.flipped ? source.rank - 1 : 8 - source.rank;
-    const targetY = orientation.flipped ? target.rank - 1 : 8 - target.rank;
-
-    const sourcePoint = { x: sourceX * 12.5 + 6.25, y: sourceY * 12.5 + 6.25 };
-    const targetPoint = { x: targetX * 12.5 + 6.25, y: targetY * 12.5 + 6.25 };
+    const categories = new Set();
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.classList.add("cmh-arrow-layer");
     svg.setAttribute("viewBox", "0 0 100 100");
 
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-    marker.setAttribute("id", "cmh-arrow-head");
-    marker.setAttribute("viewBox", "0 0 10 10");
-    marker.setAttribute("refX", "8.5");
-    marker.setAttribute("refY", "5");
-    marker.setAttribute("markerWidth", "5");
-    marker.setAttribute("markerHeight", "5");
-    marker.setAttribute("orient", "auto");
+    for (const category of ["best", "good", "ok", "bad"]) {
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "cmh-arrow-head-" + category);
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "8.5");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", "5");
+      marker.setAttribute("markerHeight", "5");
+      marker.setAttribute("orient", "auto");
 
-    const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    head.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-    head.setAttribute("fill", "currentColor");
-    marker.appendChild(head);
-    defs.appendChild(marker);
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      head.classList.add("cmh-arrow-head", "cmh-" + category);
+      head.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+      marker.appendChild(head);
+      defs.appendChild(marker);
+    }
     svg.appendChild(defs);
 
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", String(sourcePoint.x));
-    line.setAttribute("y1", String(sourcePoint.y));
-    line.setAttribute("x2", String(targetPoint.x));
-    line.setAttribute("y2", String(targetPoint.y));
-    line.setAttribute("marker-end", "url(#cmh-arrow-head)");
-    line.classList.add("cmh-arrow");
-    svg.appendChild(line);
+    moves.forEach((move, index) => {
+      const category = classifyMove(move, index, result.score);
+      categories.add(category);
 
-    board.appendChild(svg);
+      const source = indexToSquare(move.from);
+      const target = indexToSquare(move.to);
+
+      const sourceX = orientation.flipped ? 7 - source.file : source.file;
+      const targetX = orientation.flipped ? 7 - target.file : target.file;
+      const sourceY = orientation.flipped ? source.rank - 1 : 8 - source.rank;
+      const targetY = orientation.flipped ? target.rank - 1 : 8 - target.rank;
+
+      const sourcePoint = { x: sourceX * 12.5 + 6.25, y: sourceY * 12.5 + 6.25 };
+      const targetPoint = { x: targetX * 12.5 + 6.25, y: targetY * 12.5 + 6.25 };
+
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(sourcePoint.x));
+      line.setAttribute("y1", String(sourcePoint.y));
+      line.setAttribute("x2", String(targetPoint.x));
+      line.setAttribute("y2", String(targetPoint.y));
+      line.setAttribute("marker-end", "url(#cmh-arrow-head-" + category + ")");
+      line.classList.add("cmh-arrow", "cmh-" + category);
+      svg.appendChild(line);
+    });
+
+    if (categories.size) board.appendChild(svg);
   }
 
   function getPositionKey(position, side) {
@@ -162,76 +185,101 @@
   }
 
   async function scan() {
-    if (busy) return;
+    if (busy) return stateResponse();
     busy = true;
 
     try {
       const board = getBoardElement();
       if (!board) {
-        setStatus("No chessboard on this page");
-        return;
+        setStatus("No chessboard", "This page does not currently contain a Chess.com board.");
+        return stateResponse();
       }
 
       const engine = window.__CMH_ENGINE__;
       if (!engine) {
-        setStatus("Local engine loading...");
-        return;
+        setStatus("Local engine loading", "The built-in engine has not finished loading yet.");
+        return stateResponse();
       }
 
       const position = readPosition(board);
       const pieceCount = position.filter(Boolean).length;
       if (!pieceCount) {
-        clearArrow(board);
-        setStatus("Board not loaded");
-        return;
+        clearArrows(board);
+        setStatus("Board not loaded", "Waiting for the pieces to appear.");
+        return stateResponse();
       }
 
       const side = getSideToMove();
       const key = getPositionKey(position, side);
 
-      if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer")) return;
+      if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer")) return stateResponse();
 
-      setStatus("Thinking...");
+      setStatus("Thinking...", "Analyzing the position with the built-in local engine.");
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      const result = engine.search(position, side, 4, 40000);
+      const result = engine.search(position, side, 4, 40000, 4);
       if (!result) {
-        clearArrow(board);
-        setStatus("No legal move");
+        clearArrows(board);
+        lastResult = null;
         lastPositionKey = key;
-        return;
+        setStatus("No legal move", "The current position has no legal move available.");
+        return stateResponse();
       }
 
-      drawArrow(board, result);
+      lastResult = result;
+      drawArrows(board, result);
       lastPositionKey = key;
-      setStatus(moveName(result) + " | depth " + result.depth + " | " + result.nodes + " nodes");
+      setStatus(
+        "Best " + moveName(result),
+        "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
+      );
+      return stateResponse();
     } finally {
       busy = false;
     }
   }
 
-  panel.querySelector("#cmh-scan").addEventListener("click", () => {
-    scan().catch(error => setStatus(error.message));
-  });
-
-  panel.querySelector("#cmh-hide").addEventListener("click", () => {
-    hidden = !hidden;
-    const board = getBoardElement();
-
-    if (hidden) {
-      if (board) clearArrow(board);
-      panel.querySelector("#cmh-hide").textContent = "Show";
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === "getState") {
+      sendResponse(stateResponse());
       return;
     }
 
-    panel.querySelector("#cmh-hide").textContent = "Hide";
-    lastPositionKey = "";
-    scan().catch(error => setStatus(error.message));
+    if (message?.type === "scan") {
+      scan()
+        .then(sendResponse)
+        .catch(error => sendResponse({ ok: false, error: error.message }));
+      return true;
+    }
+
+    if (message?.type === "setHidden") {
+      hidden = Boolean(message.value);
+      const board = getBoardElement();
+      if (hidden) {
+        if (board) clearArrows(board);
+        setStatus("Arrows hidden", "The local engine is still running.");
+      } else if (board && lastResult) {
+        drawArrows(board, lastResult);
+        setStatus(
+          "Best " + moveName(lastResult),
+          "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
+        );
+      }
+      sendResponse(stateResponse());
+      return;
+    }
+
+    if (message?.type === "setAlternatives") {
+      showAlternatives = Boolean(message.value);
+      const board = getBoardElement();
+      if (board && lastResult && !hidden) drawArrows(board, lastResult);
+      sendResponse(stateResponse());
+    }
   });
 
   setInterval(() => {
-    scan().catch(error => setStatus(error.message));
+    scan().catch(() => {});
   }, 900);
 
-  scan().catch(error => setStatus(error.message));
+  scan().catch(() => {});
 })();
