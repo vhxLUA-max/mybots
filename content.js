@@ -6,6 +6,126 @@
   let stopped = false;
   let busy = false;
   let currentSolution = null;
+  let bridgeInjected = false;
+  let requestId = 0;
+  const pendingRequests = new Map();
+
+  const pageBridge = `(() => {
+    if (window.__sdaReadGameBridge) return;
+    window.__sdaReadGameBridge = true;
+
+    let webpackRequire;
+    try {
+      if (!self.webpackChunk || !Array.isArray(self.webpackChunk)) throw new Error("Sudoku.com Webpack runtime not found");
+      self.webpackChunk.push([[Date.now()], {}, (require) => {
+        webpackRequire = require;
+      }]);
+      if (typeof webpackRequire !== "function") throw new Error("Sudoku.com Webpack require was not exposed");
+
+      const store = webpackRequire(62351)?.default;
+      if (!store || !store.state) throw new Error("Sudoku.com game store was not found");
+
+      const snapshot = () => {
+        const game = store.state.currentGame;
+        if (!game || !Array.isArray(game.values) || game.values.length !== 81) {
+          throw new Error("Sudoku.com current game is not available");
+        }
+
+        return {
+          board: game.values.map((cell) => Number(cell?.val) || 0),
+          editable: game.values.map((cell) => Boolean(cell?.editable)),
+          solution: Array.isArray(game.solution)
+            ? game.solution.map((value) => Number(value) || 0)
+            : typeof game.solution === "string"
+              ? game.solution.split("").map((value) => Number(value) || 0)
+              : null,
+          id: game.id ?? null,
+          mission: typeof game.mission === "string" ? game.mission : "",
+          difficulty: typeof game.difficulty === "string" ? game.difficulty : "",
+          mode: typeof game.mode === "string" ? game.mode : ""
+        };
+      };
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window) return;
+        const message = event.data;
+        if (!message || message.source !== "sda-read-content") return;
+
+        try {
+          if (message.action !== "get") return;
+
+          window.postMessage({
+            source: "sda-read-page",
+            type: "response",
+            id: message.id,
+            state: snapshot()
+          }, "*");
+        } catch (error) {
+          window.postMessage({
+            source: "sda-read-page",
+            type: "error",
+            id: message.id,
+            error: error instanceof Error ? error.message : String(error)
+          }, "*");
+        }
+      });
+    } catch (error) {
+      window.postMessage({
+        source: "sda-read-page",
+        type: "bridge-error",
+        error: error instanceof Error ? error.message : String(error)
+      }, "*");
+    }
+  })();`;
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+
+    const message = event.data;
+    if (!message || message.source !== "sda-read-page") return;
+
+    if ((message.type === "response" || message.type === "error") && pendingRequests.has(message.id)) {
+      const pending = pendingRequests.get(message.id);
+      pendingRequests.delete(message.id);
+      clearTimeout(pending.timer);
+
+      if (message.type === "error") {
+        pending.reject(new Error(message.error));
+      } else {
+        pending.resolve(message.state);
+      }
+    }
+  });
+
+  function injectBridge() {
+    if (bridgeInjected) return;
+    bridgeInjected = true;
+
+    const script = document.createElement("script");
+    script.textContent = pageBridge;
+    (document.documentElement || document.head || document.body).appendChild(script);
+    script.remove();
+  }
+
+  function requestLiveGame() {
+    injectBridge();
+
+    return new Promise((resolve, reject) => {
+      const id = ++requestId;
+      const timer = setTimeout(() => {
+        pendingRequests.delete(id);
+        reject(new Error("Sudoku.com game bridge timed out"));
+      }, 2000);
+
+      pendingRequests.set(id, { resolve, reject, timer });
+
+      window.postMessage({
+        source: "sda-read-content",
+        action: "get",
+        id
+      }, "*");
+    });
+  }
 
   const panel = document.createElement("div");
   panel.className = "sda-panel";
@@ -55,26 +175,61 @@
     return null;
   }
 
-  function readGame() {
-    const raw = localStorage.getItem("main_game");
-    if (!raw) throw new Error("main_game was not found");
-
-    let game;
+  async function readGame() {
     try {
-      game = JSON.parse(raw);
-    } catch {
-      throw new Error("main_game is not valid JSON");
+      const live = await requestLiveGame();
+      const board = live.board.map(normalizeValue);
+      const editable = live.editable.map(Boolean);
+      const solution = normalizeSolution(live.solution);
+
+      if (board.length !== 81 || editable.length !== 81) {
+        throw new Error("Sudoku.com current game does not contain 81 cells");
+      }
+
+      return {
+        board,
+        editable,
+        solution,
+        live: true,
+        id: live.id,
+        mission: live.mission,
+        difficulty: live.difficulty,
+        mode: live.mode
+      };
+    } catch (error) {
+      const raw = localStorage.getItem("main_game");
+      if (!raw) throw error;
+
+      let game;
+      try {
+        game = JSON.parse(raw);
+      } catch {
+        throw new Error("main_game is not valid JSON");
+      }
+
+      if (!Array.isArray(game.values) || game.values.length !== 81) {
+        throw new Error("main_game.values does not contain 81 cells");
+      }
+
+      const board = game.values.map(value => normalizeValue(value?.val));
+      const editable = game.values.map(value => Boolean(value?.editable));
+      const solution = normalizeSolution(game.solution);
+
+      return { board, editable, solution, live: false, id: null, mission: "", difficulty: "", mode: "" };
     }
+  }
 
-    if (!Array.isArray(game.values) || game.values.length !== 81) {
-      throw new Error("main_game.values does not contain 81 cells");
-    }
+  function getGameKey(game) {
+    if (!game.live) return null;
 
-    const board = game.values.map(value => normalizeValue(value?.val));
-    const editable = game.values.map(value => Boolean(value?.editable));
-    const solution = normalizeSolution(game.solution);
-
-    return { board, editable, solution };
+    return [
+      location.pathname,
+      game.mode,
+      game.difficulty,
+      String(game.id ?? ""),
+      game.mission,
+      game.solution ? game.solution.join("") : ""
+    ].join("|");
   }
 
   function solveSudoku(input) {
@@ -232,8 +387,9 @@
     stopped = false;
 
     try {
-      const game = readGame();
+      const game = await readGame();
       let solution = game.solution;
+      const startingGameKey = getGameKey(game);
 
       if (!solution) {
         const solved = solveSudoku(boardFromFlat(game.board));
@@ -252,6 +408,17 @@
         if (stopped) {
           setStatus("Stopped at " + i + "/81");
           return;
+        }
+
+        if (startingGameKey) {
+          const liveGame = await readGame();
+          const liveGameKey = getGameKey(liveGame);
+
+          if (!liveGameKey || liveGameKey !== startingGameKey) {
+            stopped = true;
+            setStatus("New game detected. Stopped.");
+            return;
+          }
         }
 
         if (game.editable[i] && game.board[i] !== solution[i]) {
