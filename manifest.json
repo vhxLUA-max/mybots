@@ -8,7 +8,8 @@
       "matches": ["https://sudoku.com/*"],
       "js": ["content.js"],
       "css": ["styles.css"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "world": "MAIN"
     }
   ],
   "host_permissions": ["https://sudoku.com/*"]
