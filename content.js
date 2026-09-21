@@ -71,7 +71,7 @@
     }
 
     const board = game.values.map(value => normalizeValue(value?.val));
-    const editable = game.values.map(value => value?.editable !== false && value?.prefilled !== true && value?.locked !== true);
+    const editable = game.values.map(value => Boolean(value?.editable));
     const solution = normalizeSolution(game.solution);
 
     return { board, editable, solution };
@@ -108,7 +108,8 @@
           if (board[r][c]) continue;
           const box = Math.floor(r / 3) * 3 + Math.floor(c / 3);
           const mask = FULL & ~(rows[r] | cols[c] | boxes[box]);
-          const count = 32 - Math.clz32(mask);
+          let count = 0;
+          for (let bits = mask; bits; bits &= bits - 1) count++;
           if (count === 0) return false;
           if (count < bestCount) {
             bestCount = count;
@@ -158,8 +159,25 @@
     return cells;
   }
 
+  function validateSolution(board, solution) {
+    if (!solution || solution.length !== 81) return false;
+
+    for (let i = 0; i < 81; i++) {
+      if (board[i] && board[i] !== solution[i]) return false;
+    }
+
+    return solveSudoku(boardFromFlat(solution)) !== null;
+  }
+
+  function getSolution(game) {
+    if (validateSolution(game.board, game.solution)) return game.solution;
+
+    const solved = solveSudoku(boardFromFlat(game.board));
+    return solved ? solved.flat() : null;
+  }
+
   function getBoardCanvas() {
-    const canvas = document.querySelector("canvas.game-canvas");
+    const canvas = document.querySelector("#game canvas");
     if (!canvas) throw new Error("Sudoku board canvas was not found");
     return canvas;
   }
@@ -174,7 +192,7 @@
     const clientX = rect.left + ((col + 0.5) / 9) * rect.width;
     const clientY = rect.top + ((row + 0.5) / 9) * rect.height;
 
-    canvas.dispatchEvent(new MouseEvent("click", {
+    canvas.dispatchEvent(new MouseEvent("mousedown", {
       bubbles: true,
       cancelable: true,
       clientX,
@@ -185,9 +203,16 @@
   }
 
   async function enterDigit(digit) {
-    const button = document.querySelector(".controls .control[data-value=\"" + digit + "\"]");
-    if (!button) throw new Error("Could not find number control " + digit);
-    button.click();
+    const keyCode = 48 + digit;
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      key: String(digit),
+      code: "Digit" + digit,
+      keyCode,
+      which: keyCode,
+      bubbles: true,
+      cancelable: true
+    }));
+    await delay(15);
   }
 
   function verifySolution(solution) {
@@ -215,14 +240,9 @@
 
     try {
       const game = await scan();
-      let solution = game.solution;
+      const solution = getSolution(game);
 
-      if (!solution) {
-        const solved = solveSudoku(boardFromFlat(game.board));
-        solution = solved ? solved.flat() : null;
-      }
-
-      if (!solution) throw new Error("The current board is invalid or has no solution");
+      if (!solution) throw new Error("The current board does not match a valid Sudoku solution");
 
       currentSolution = solution;
       setStatus("Solved: " + game.editable.filter(Boolean).length + " editable cells");
@@ -240,14 +260,9 @@
 
     try {
       const game = readGame();
-      let solution = game.solution;
+      const solution = getSolution(game);
 
-      if (!solution) {
-        const solved = solveSudoku(boardFromFlat(game.board));
-        solution = solved ? solved.flat() : null;
-      }
-
-      if (!solution) throw new Error("The current board is invalid or has no solution");
+      if (!solution) throw new Error("The current board does not match a valid Sudoku solution");
 
       currentSolution = solution;
       const editableCells = getEditableCells(game.editable);
@@ -261,17 +276,17 @@
         }
 
         const index = editableCells[i];
-        if (game.board[index] !== solution[index]) {
+        if (game.board[index] === 0) {
           await selectCell(index);
           await enterDigit(solution[index]);
           await delay(Number(delayEl.value));
 
           const liveGame = readGame();
           if (liveGame.board[index] !== solution[index]) {
-            await selectCell(index);
-            await enterDigit(solution[index]);
-            await delay(Number(delayEl.value));
+            throw new Error("Move rejected at cell " + (index + 1) + ": expected " + solution[index] + ", found " + liveGame.board[index]);
           }
+
+          game.board[index] = liveGame.board[index];
         }
 
         setStatus("Playing " + (i + 1) + "/" + editableCells.length);
