@@ -346,7 +346,7 @@
       return best;
     }
 
-    search(position, side, maxDepth = 4, nodeLimit = 40000) {
+    search(position, side, maxDepth = 4, nodeLimit = 40000, alternativeCount = 4) {
       this.nodes = 0;
       this.nodeLimit = nodeLimit;
       this.table.clear();
@@ -354,12 +354,14 @@
 
       let bestMove = null;
       let bestScore = -999999;
+      let bestMoves = [];
       let reachedDepth = 0;
 
       for (let depth = 1; depth <= maxDepth; depth++) {
         const moves = this.orderMoves(position, legalMoves(position, side));
         if (!moves.length) break;
 
+        const scoredMoves = [];
         let localBest = moves[0];
         let localScore = -999999;
         const nextSide = side === "w" ? "b" : "w";
@@ -367,6 +369,8 @@
         for (const move of moves) {
           const score = -this.negamax(applyMove(position, move), nextSide, depth - 1, -1000000, 1000000);
           if (this.stop) break;
+
+          scoredMoves.push({ move, score });
           if (score > localScore) {
             localScore = score;
             localBest = move;
@@ -375,6 +379,8 @@
 
         if (this.stop) break;
 
+        scoredMoves.sort((a, b) => b.score - a.score);
+        bestMoves = scoredMoves;
         bestMove = localBest;
         bestScore = localScore;
         reachedDepth = depth;
@@ -383,13 +389,23 @@
 
       if (!bestMove) return null;
 
+      const alternatives = bestMoves
+        .slice(0, Math.max(1, alternativeCount))
+        .map(entry => ({
+          from: entry.move.from,
+          to: entry.move.to,
+          promotion: entry.move.promotion,
+          score: entry.score
+        }));
+
       return {
         from: bestMove.from,
         to: bestMove.to,
         promotion: bestMove.promotion,
         score: bestScore,
         depth: reachedDepth,
-        nodes: this.nodes
+        nodes: this.nodes,
+        alternatives
       };
     }
   }
