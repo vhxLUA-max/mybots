@@ -105,8 +105,9 @@
       bookModeSelect.appendChild(option);
     }
 
-    if (response.loaded) {
-      bookStatusEl.textContent = response.books.length + " available • " + response.name + " uploaded";
+    const customBook = response.books?.find(book => book.id === "custom");
+    if (customBook) {
+      bookStatusEl.textContent = response.books.length + " available • " + customBook.name + " uploaded";
       bookClearButton.disabled = false;
     } else {
       bookStatusEl.textContent = response.books?.length
