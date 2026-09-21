@@ -27,16 +27,6 @@
     return document.querySelector("wc-chess-board.board, wc-chess-board");
   }
 
-  function isLiveGame() {
-    return /^\/game\/live\//.test(location.pathname);
-  }
-
-  function isRestrictedPage() {
-    return /^\/game\/live\//.test(location.pathname) ||
-      /^\/play(?:\/|$)/.test(location.pathname) ||
-      /^\/puzzles(?:\/|$)/.test(location.pathname);
-  }
-
   function parseSquareNumber(value) {
     const number = Number(value);
     if (!Number.isInteger(number)) return null;
@@ -179,13 +169,6 @@
       const board = getBoardElement();
       if (!board) {
         setStatus("No chessboard on this page");
-        return;
-      }
-
-      if (isRestrictedPage()) {
-        clearArrow(board);
-        setStatus(isLiveGame() ? "Live game hints disabled" : "Hints disabled on this page");
-        lastPositionKey = "";
         return;
       }
 
