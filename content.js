@@ -40,8 +40,8 @@
   function parseSquareNumber(value) {
     const number = Number(value);
     if (!Number.isInteger(number)) return null;
-    const rank = Math.floor(number / 10);
-    const file = number % 10 - 1;
+    const file = Math.floor(number / 10) - 1;
+    const rank = number % 10;
     if (rank < 1 || rank > 8 || file < 0 || file > 7) return null;
     return { file, rank };
   }
