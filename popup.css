@@ -276,3 +276,43 @@ body {
 .cmh-book-mode select:focus {
   border-color: #2f7df6;
 }
+
+.cmh-depth {
+  padding: 10px 14px 12px;
+  border-top: 1px solid #242934;
+}
+
+.cmh-depth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.cmh-depth-label {
+  color: #80899a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cmh-depth-value {
+  color: #dce2ec;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cmh-depth input {
+  width: 100%;
+  margin: 0;
+  accent-color: #2f7df6;
+  cursor: pointer;
+}
+
+.cmh-depth-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: #697284;
+  font-size: 8px;
+}
