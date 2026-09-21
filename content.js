@@ -352,7 +352,7 @@
   }
 
   async function scan() {
-    const game = readGame();
+    const game = await readGame();
     const empty = game.editable.filter((editable, index) => editable && game.board[index] === 0).length;
     setStatus("Scanned: " + empty + " empty");
     return game;
