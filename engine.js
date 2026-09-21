@@ -10,6 +10,8 @@
     Q: [-20,-10,-10,0,0,-10,-10,-20,-10,0,5,0,0,0,0,-10,-10,5,5,5,5,5,5,-10,0,0,5,5,5,5,0,0,-5,0,5,5,5,5,0,-5,-10,0,5,5,5,5,0,-10,-20,-10,-10,0,0,-10,-10,-20],
     K: [-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20,20,30,20,0,0,20,30,20,20,0,0,0,0,0,0,20]
   };
+  const MATE_SCORE = 999999;
+
 
   function square(file, rank) {
     return (rank - 1) * 8 + file;
@@ -281,7 +283,9 @@
         }
 
         if (pawnCount > 1) score -= sign * 16 * (pawnCount - 1);
-        if (pawnCount && !pawnOnFile(position, side, file - 1) && !pawnOnFile(position, side, file + 1)) score -= sign * 12;
+        if (pawnCount && !pawnOnFile(position, side, file - 1) && !pawnOnFile(position, side, file + 1)) {
+          score -= sign * 12;
+        }
       }
 
       for (let i = 0; i < 64; i++) {
@@ -325,36 +329,14 @@
         const shieldRank = side === "w" ? rank + 1 : rank - 1;
         if (shieldRank >= 1 && shieldRank <= 8) {
           for (let df = -1; df <= 1; df++) {
-            if (position[square(file + df, shieldRank)] === pawn) score += sign * 8;
+            const fileIndex = file + df;
+            if (fileIndex >= 0 && fileIndex <= 7 && position[square(fileIndex, shieldRank)] === pawn) {
+              score += sign * 8;
+            }
           }
         }
       }
     }
-
-    return score;
-  }
-    let score = 0;
-    let whiteBishops = 0;
-    let blackBishops = 0;
-
-    for (let i = 0; i < 64; i++) {
-      const piece = position[i];
-      if (!piece) continue;
-      const type = piece.toUpperCase();
-      const value = VALUES[type];
-      const tableIndex = piece === piece.toUpperCase() ? i : 56 - i;
-      const positional = PST[type][tableIndex] || 0;
-      if (piece === piece.toUpperCase()) {
-        score += value + positional;
-        if (type === "B") whiteBishops++;
-      } else {
-        score -= value + positional;
-        if (type === "B") blackBishops++;
-      }
-    }
-
-    if (whiteBishops >= 2) score += 30;
-    if (blackBishops >= 2) score -= 30;
 
     return score;
   }
