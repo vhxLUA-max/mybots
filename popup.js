@@ -9,6 +9,8 @@
   const bookStatusEl = document.querySelector("#cmh-book-status");
   const bookFileInput = document.querySelector("#cmh-book-file");
   const bookClearButton = document.querySelector("#cmh-book-clear");
+  const depthInput = document.querySelector("#cmh-depth");
+  const depthValue = document.querySelector("#cmh-depth-value");
 
   let tabId = null;
 
@@ -117,6 +119,23 @@
     }
   }
 
+  function depthLabel(value) {
+    const labels = {
+      2: "Quick",
+      3: "Normal",
+      4: "Strong",
+      5: "Very Strong",
+      6: "Deep"
+    };
+    const depth = Number(value);
+    return "Depth " + depth + " • " + (labels[depth] || "Custom");
+  }
+
+  function setDepthDisplay(value) {
+    depthInput.value = String(value);
+    depthValue.textContent = depthLabel(value);
+  }
+
   async function refreshState() {
     const response = await sendMessage({type: "getState"});
     if (!response?.ok) throw new Error("Chess Move Helper is not loaded yet.");
@@ -125,6 +144,7 @@
     setToggle(bookEnabledButton, response.bookEnabled);
     setStatus(response.status, response.detail, true);
     bookModeSelect.value = response.bookMode || "random";
+    setDepthDisplay(response.engineDepth || 4);
   }
 
   async function connect() {
@@ -175,6 +195,23 @@
       });
       if (!response?.ok) throw new Error(response?.error || "Update failed.");
       setToggle(alternativesButton, response.showAlternatives);
+      setStatus(response.status, response.detail, true);
+    } catch {
+      setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
+    }
+  });
+
+  depthInput.addEventListener("change", async () => {
+    if (tabId === null) return;
+    const value = Number(depthInput.value);
+    setDepthDisplay(value);
+    try {
+      const response = await sendMessage({
+        type: "setEngineDepth",
+        value
+      });
+      if (!response?.ok) throw new Error(response?.error || "Depth update failed.");
+      setDepthDisplay(response.engineDepth || value);
       setStatus(response.status, response.detail, true);
     } catch {
       setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
