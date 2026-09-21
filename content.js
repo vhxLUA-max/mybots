@@ -71,7 +71,7 @@
     }
 
     const board = game.values.map(value => normalizeValue(value?.val));
-    const editable = game.values.map(value => Boolean(value?.editable));
+    const editable = game.values.map(value => value?.editable !== false && value?.prefilled !== true && value?.locked !== true);
     const solution = normalizeSolution(game.solution);
 
     return { board, editable, solution };
@@ -158,29 +158,36 @@
     return cells;
   }
 
-  function dispatchKey(key, code, keyCode) {
-    window.dispatchEvent(new KeyboardEvent("keydown", {
-      key,
-      code,
-      keyCode,
-      which: keyCode,
-      bubbles: true,
-      cancelable: true
-    }));
+  function getBoardCanvas() {
+    const canvas = document.querySelector("canvas.game-canvas");
+    if (!canvas) throw new Error("Sudoku board canvas was not found");
+    return canvas;
   }
 
-  function moveToNextCell(index) {
-    if (index === 80) return;
+  async function selectCell(index) {
+    const canvas = getBoardCanvas();
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) throw new Error("Sudoku board canvas has no visible size");
 
-    if ((index + 1) % 9 === 0) {
-      dispatchKey("ArrowDown", "ArrowDown", 40);
-      for (let i = 0; i < 9; i++) {
-        dispatchKey("ArrowLeft", "ArrowLeft", 37);
-      }
-      return;
-    }
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    const clientX = rect.left + ((col + 0.5) / 9) * rect.width;
+    const clientY = rect.top + ((row + 0.5) / 9) * rect.height;
 
-    dispatchKey("ArrowRight", "ArrowRight", 39);
+    canvas.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX,
+      clientY
+    }));
+
+    await delay(25);
+  }
+
+  async function enterDigit(digit) {
+    const button = document.querySelector(".controls .control[data-value=\"" + digit + "\"]");
+    if (!button) throw new Error("Could not find number control " + digit);
+    button.click();
   }
 
   function verifySolution(solution) {
@@ -246,27 +253,28 @@
       const editableCells = getEditableCells(game.editable);
 
       setStatus("Playing 0/" + editableCells.length);
-      window.dispatchEvent(new Event("focus"));
 
-      for (let i = 0; i < 81; i++) {
+      for (let i = 0; i < editableCells.length; i++) {
         if (stopped) {
-          setStatus("Stopped at " + i + "/81");
+          setStatus("Stopped at " + i + "/" + editableCells.length);
           return;
         }
 
-        if (game.editable[i] && game.board[i] !== solution[i]) {
-          const key = String(solution[i]);
-          const keyCode = 48 + solution[i];
-          dispatchKey(key, "Digit" + key, keyCode);
+        const index = editableCells[i];
+        if (game.board[index] !== solution[index]) {
+          await selectCell(index);
+          await enterDigit(solution[index]);
+          await delay(Number(delayEl.value));
+
+          const liveGame = readGame();
+          if (liveGame.board[index] !== solution[index]) {
+            await selectCell(index);
+            await enterDigit(solution[index]);
+            await delay(Number(delayEl.value));
+          }
         }
 
-        moveToNextCell(i);
-
-        if (game.editable[i]) {
-          setStatus("Playing " + (editableCells.indexOf(i) + 1) + "/" + editableCells.length);
-        }
-
-        await delay(Number(delayEl.value));
+        setStatus("Playing " + (i + 1) + "/" + editableCells.length);
       }
 
       await delay(Math.max(100, Number(delayEl.value)));
