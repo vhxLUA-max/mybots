@@ -50,6 +50,15 @@
         <select id="cmh-book-mode"></select>
       </div>
 
+      <div class="cmh-depth">
+        <div class="cmh-depth-header">
+          <label class="cmh-depth-label" for="cmh-depth">Engine depth</label>
+          <span class="cmh-depth-value" id="cmh-depth-value">Depth 4 • Strong</span>
+        </div>
+        <input id="cmh-depth" type="range" min="2" max="6" value="4" step="1">
+        <div class="cmh-depth-scale"><span>Quick</span><span>Normal</span><span>Strong</span><span>Very Strong</span><span>Deep</span></div>
+      </div>
+
       <div class="cmh-book-row">
         <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
         <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
