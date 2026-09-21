@@ -4,11 +4,11 @@
   const VALUES = { P: 100, N: 320, B: 330, R: 500, Q: 900, K: 20000 };
   const PST = {
     P: [0,0,0,0,0,0,0,0,5,10,10,-20,-20,10,10,5,5,-5,-10,0,0,-10,-5,5,0,0,0,20,20,0,0,0,5,5,10,25,25,10,5,5,10,10,20,30,30,20,10,10,50,50,50,50,50,50,50,50,0,0,0,0,0,0,0,0],
-    N: [-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,5,5,0,-20,-40,-30,5,10,15,15,10,5,-30,-30,0,15,20,20,15,0,-30,-30,5,20,25,25,20,5,-30,-30,0,15,20,20,15,0,-30,-40,-20,0,0,0,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
+    N: [-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,5,5,0,-20,-40,-30,5,10,15,15,10,5,-30,-30,0,15,20,20,15,0,-30,-30,5,20,25,25,20,5,-30,-30,0,15,20,20,15,0,-30,-40,-20,0,0,0,0,-20,-40,-50,-40,-30,-30,-40,-50],
     B: [-20,-10,-10,-10,-10,-10,-10,-20,-10,5,0,0,0,0,5,-10,-10,10,10,10,10,10,10,10,-10,0,10,10,10,10,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,0,0,0,0,0,0,-10,-20,-10,-10,-10,-10,-10,-10,-20],
     R: [0,0,5,10,10,5,0,0,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,5,0,0,0,0,0,0,5,10,10,10,10,10,10,10,10,5,10,10,10,10,10,10,5,0,0,0,0,0,0,0,0],
     Q: [-20,-10,-10,0,0,-10,-10,-20,-10,0,5,0,0,0,0,-10,-10,5,5,5,5,5,5,-10,0,0,5,5,5,5,0,0,-5,0,5,5,5,5,0,-5,-10,0,5,5,5,5,0,-10,-20,-10,-10,0,0,-10,-10,-20],
-    K: [-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20,20,30,20,0,0,20,30,20,20,0,0,0,0,0,0,20]
+    K: [-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-10,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20,20,30,20,0,0,20,30,20,20,0,0,0,0,0,0,20]
   };
   const MATE_SCORE = 999999;
 
@@ -166,23 +166,30 @@
           const r = rank + dr;
           if (!inside(f, r)) continue;
           const to = square(f, r);
-          if (!position[to] || (isEnemy(position[to], side) && position[to].toUpperCase() !== "K")) pushMove(moves, from, to);
+          if (!position[to] || isEnemy(position[to], side)) {
+            if (!position[to] || position[to].toUpperCase() !== "K") pushMove(moves, from, to);
+          }
         }
         continue;
       }
 
       if (type === "K") {
-        for (const [df, dr] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
-          const f = file + df;
-          const r = rank + dr;
-          if (!inside(f, r)) continue;
-          const to = square(f, r);
-          if (!position[to] || (isEnemy(position[to], side) && position[to].toUpperCase() !== "K")) pushMove(moves, from, to);
+        for (const df of [-1,0,1]) {
+          for (const dr of [-1,0,1]) {
+            if (!df && !dr) continue;
+            const f = file + df;
+            const r = rank + dr;
+            if (!inside(f, r)) continue;
+            const to = square(f, r);
+            if (!position[to] || isEnemy(position[to], side)) {
+              if (!position[to] || position[to].toUpperCase() !== "K") pushMove(moves, from, to);
+            }
+          }
         }
 
+        const enemy = side === "w" ? "b" : "w";
         const backRank = side === "w" ? 1 : 8;
-        if (rank === backRank && file === 4 && !kingInCheck(position, side)) {
-          const enemy = side === "w" ? "b" : "w";
+        if (rank === backRank && !kingInCheck(position, side)) {
           const kingSideRook = position[square(7, backRank)] === colorPiece("R", side);
           if (kingSideRook && !position[square(5, backRank)] && !position[square(6, backRank)] &&
               !attacked(position, square(5, backRank), enemy) && !attacked(position, square(6, backRank), enemy)) {
@@ -217,7 +224,6 @@
           }
           f += df;
           r += dr;
-          if (type !== "B" && type !== "R" && type !== "Q") break;
         }
       }
     }
@@ -328,11 +334,8 @@
         const { file, rank } = coords(kingIndex);
         const shieldRank = side === "w" ? rank + 1 : rank - 1;
         if (shieldRank >= 1 && shieldRank <= 8) {
-          for (let df = -1; df <= 1; df++) {
-            const fileIndex = file + df;
-            if (fileIndex >= 0 && fileIndex <= 7 && position[square(fileIndex, shieldRank)] === pawn) {
-              score += sign * 8;
-            }
+          for (let f = Math.max(0, file - 1); f <= Math.min(7, file + 1); f++) {
+            if (position[square(f, shieldRank)] === pawn) score += sign * 8;
           }
         }
       }
@@ -341,73 +344,52 @@
     return score;
   }
 
-  function moveScore(position, move) {
-    const captured = position[move.to];
-    let score = 0;
-    if (captured) score += VALUES[captured.toUpperCase()] * 10 - VALUES[position[move.from].toUpperCase()];
-    if (move.promotion) score += VALUES[move.promotion] + 800;
-    if (move.castle) score += 60;
-    return score;
-  }
-
   class Engine {
     constructor() {
       this.nodes = 0;
-      this.nodeLimit = 40000;
-      this.table = new Map();
+      this.nodeLimit = 0;
       this.stop = false;
-      this.killers = Array.from({ length: 64 }, () => []);
+      this.table = new Map();
+      this.killers = Array.from({length: 64}, () => []);
       this.history = new Map();
-    }
-
-    resetHeuristics() {
-      this.killers = Array.from({ length: 64 }, () => []);
-      this.history.clear();
-    }
-
-    moveKey(move) {
-      return move.from + ":" + move.to + ":" + (move.promotion || "") + ":" + (move.castle ? "c" : "");
     }
 
     isCapture(position, move) {
       return Boolean(position[move.to]);
     }
 
-    historyValue(side, move) {
-      return this.history.get(side + ":" + move.from + ":" + move.to) || 0;
+    resetHeuristics() {
+      this.killers = Array.from({length: 64}, () => []);
+      this.history.clear();
+    }
+
+    addKiller(ply, move) {
+      const key = move.from + ":" + move.to;
+      const list = this.killers[ply] || [];
+      if (!list.some(item => item.from === move.from && item.to === move.to)) {
+        list.unshift({from: move.from, to: move.to});
+        this.killers[ply] = list.slice(0, 2);
+      }
     }
 
     addHistory(side, move, depth) {
       const key = side + ":" + move.from + ":" + move.to;
-      this.history.set(key, Math.min(100000, (this.history.get(key) || 0) + depth * depth));
+      this.history.set(key, (this.history.get(key) || 0) + depth * depth);
     }
 
-    addKiller(ply, move) {
-      const list = this.killers[ply] || [];
-      const key = this.moveKey(move);
-      if (list.some(existing => this.moveKey(existing) === key)) return;
-      list.unshift(move);
-      if (list.length > 2) list.pop();
-      this.killers[ply] = list;
-    }
-
-    killerValue(ply, move) {
-      const list = this.killers[ply] || [];
-      const key = this.moveKey(move);
-      if (list[0] && this.moveKey(list[0]) === key) return 5000;
-      if (list[1] && this.moveKey(list[1]) === key) return 3000;
-      return 0;
-    }
-
-    orderMoves(position, side, moves, ply, hashMove = null) {
-      return moves.sort((a, b) => {
-        const aHash = hashMove && this.moveKey(hashMove) === this.moveKey(a) ? 1000000 : 0;
-        const bHash = hashMove && this.moveKey(hashMove) === this.moveKey(b) ? 1000000 : 0;
-        const aQuiet = !this.isCapture(position, a) && !a.promotion && !a.castle;
-        const bQuiet = !this.isCapture(position, b) && !b.promotion && !b.castle;
-        const aScore = aHash + moveScore(position, a) + (aQuiet ? this.killerValue(ply, a) + this.historyValue(side, a) : 0);
-        const bScore = bHash + moveScore(position, b) + (bQuiet ? this.killerValue(ply, b) + this.historyValue(side, b) : 0);
-        return bScore - aScore;
+    orderMoves(position, side, moves, ply = 0, ttMove = null) {
+      const killers = this.killers[ply] || [];
+      moves.sort((a, b) => {
+        const score = move => {
+          let value = 0;
+          if (ttMove && move.from === ttMove.from && move.to === ttMove.to) value += 1000000;
+          if (this.isCapture(position, move)) value += 10000 + (VALUES[position[move.to]?.toUpperCase()] || 0);
+          if (move.promotion) value += VALUES[move.promotion] || 0;
+          if (killers.some(item => item.from === move.from && item.to === move.to)) value += 5000;
+          value += this.history.get(side + ":" + move.from + ":" + move.to) || 0;
+          return value;
+        };
+        return score(b) - score(a);
       });
     }
 
@@ -415,23 +397,6 @@
       if (++this.nodes >= this.nodeLimit) {
         this.stop = true;
         return side === "w" ? evaluate(position) : -evaluate(position);
-      }
-
-      const inCheck = kingInCheck(position, side);
-      if (inCheck) {
-        const evasions = this.orderMoves(position, side, legalMoves(position, side), 0);
-        if (!evasions.length) return -MATE_SCORE;
-
-        let best = -MATE_SCORE;
-        const nextSide = side === "w" ? "b" : "w";
-        for (const move of evasions) {
-          const score = -this.quiescence(applyMove(position, move), nextSide, -beta, -alpha);
-          if (this.stop) return score;
-          if (score > best) best = score;
-          if (score > alpha) alpha = score;
-          if (alpha >= beta) break;
-        }
-        return best;
       }
 
       const stand = side === "w" ? evaluate(position) : -evaluate(position);
@@ -583,9 +548,21 @@
         });
       }
 
-      if (!bestMove) return null;
+      if (!bestMove) {
+        return {
+          gameState: kingInCheck(position, side) ? "checkmate" : "stalemate",
+          from: null,
+          to: null,
+          promotion: null,
+          score: kingInCheck(position, side) ? -MATE_SCORE : 0,
+          depth: 0,
+          nodes: this.nodes,
+          alternatives: []
+        };
+      }
 
       return {
+        gameState: kingInCheck(position, side) ? "check" : "playing",
         from: bestMove.from,
         to: bestMove.to,
         promotion: bestMove.promotion,
