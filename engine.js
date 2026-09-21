@@ -358,6 +358,13 @@
       return Boolean(position[move.to]);
     }
 
+    getGameState(position, side) {
+      const inCheck = kingInCheck(position, side);
+      const hasLegalMoves = legalMoves(position, side).length > 0;
+      if (!hasLegalMoves) return inCheck ? "checkmate" : "stalemate";
+      return inCheck ? "check" : "playing";
+    }
+
     resetHeuristics() {
       this.killers = Array.from({length: 64}, () => []);
       this.history.clear();
