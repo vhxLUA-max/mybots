@@ -194,7 +194,6 @@
 
     moves.forEach((move, index) => {
       const category = classifyMove(move, index, result.score, result.book);
-      categories.add(category);
 
       const source = indexToSquare(move.from);
       const target = indexToSquare(move.to);
