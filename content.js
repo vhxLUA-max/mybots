@@ -366,6 +366,7 @@
       }
 
       const side = getSideToMove();
+      const gameState = engine.getGameState(position, side);
       const key = getPositionKey(position, side);
 
       if (force) {
@@ -378,6 +379,15 @@
 
       setStatus("Thinking...", "Checking the opening book before engine search.");
       await new Promise(resolve => setTimeout(resolve, 0));
+
+      if (gameState === "checkmate" || gameState === "stalemate") {
+        clearArrows(board);
+        lastResult = null;
+        lastBookName = "";
+        lastPositionKey = key;
+        setStatus(gameState === "checkmate" ? "Checkmate" : "Stalemate", "No legal moves remain.");
+        return stateResponse();
+      }
 
       const bookResult = await lookupBook(position, side);
       const nodeLimit = ({2: 25000, 3: 50000, 4: 100000, 5: 220000, 6: 400000})[engineDepth] || 100000;
