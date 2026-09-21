@@ -1,58 +1,3 @@
-.cmh-panel {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 2147483647;
-  width: 230px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(20, 20, 24, 0.96);
-  color: #fff;
-  font: 13px/1.3 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-}
-
-.cmh-title {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.cmh-status {
-  min-height: 18px;
-  margin-bottom: 10px;
-  opacity: 0.9;
-  overflow-wrap: anywhere;
-}
-
-.cmh-row {
-  display: flex;
-  gap: 8px;
-}
-
-.cmh-button {
-  flex: 1;
-  border: 0;
-  border-radius: 8px;
-  padding: 8px 9px;
-  color: #fff;
-  background: #3a3a44;
-  cursor: pointer;
-  font: inherit;
-}
-
-.cmh-button:hover {
-  background: #4a4a56;
-}
-
-.cmh-primary {
-  background: #2f7df6;
-}
-
-.cmh-primary:hover {
-  background: #2569d3;
-}
-
 .cmh-arrow-layer {
   position: absolute;
   inset: 0;
@@ -64,10 +9,47 @@
 }
 
 .cmh-arrow {
-  color: #39e56b;
-  stroke: currentColor;
+  fill: none;
   stroke-width: 1.7;
   stroke-linecap: round;
-  fill: none;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+.cmh-arrow.cmh-best {
+  color: #39e56b;
+  stroke: currentColor;
+}
+
+.cmh-arrow.cmh-good {
+  color: #43b7ff;
+  stroke: currentColor;
+  opacity: 0.88;
+}
+
+.cmh-arrow.cmh-ok {
+  color: #f5c451;
+  stroke: currentColor;
+  opacity: 0.78;
+}
+
+.cmh-arrow.cmh-bad {
+  color: #ff625f;
+  stroke: currentColor;
+  opacity: 0.72;
+}
+
+.cmh-arrow-head.cmh-best {
+  fill: #39e56b;
+}
+
+.cmh-arrow-head.cmh-good {
+  fill: #43b7ff;
+}
+
+.cmh-arrow-head.cmh-ok {
+  fill: #f5c451;
+}
+
+.cmh-arrow-head.cmh-bad {
+  fill: #ff625f;
 }
