@@ -11,6 +11,7 @@
   let lastPositionKey = "";
   let lastResult = null;
   let lastBookName = "";
+  let currentGameId = "";
   let currentStatus = "Waiting for board...";
   let currentDetail = "Open a Chess.com board to begin.";
 
@@ -29,12 +30,18 @@
       bookEnabled,
       bookMode,
       engineDepth,
-      bookName: lastBookName
+      bookName: lastBookName,
+      gameId: currentGameId
     };
   }
 
   function getBoardElement() {
     return document.querySelector("wc-chess-board.board, wc-chess-board");
+  }
+
+  function getGameId() {
+    const match = location.pathname.match(/\/(?:game\/live|analysis\/game\/live|live\/game)\/(\d+)/);
+    return match ? match[1] : "";
   }
 
   function parseSquareNumber(value) {
@@ -260,6 +267,16 @@
     busy = true;
 
     try {
+      const gameId = getGameId();
+      if (gameId !== currentGameId) {
+        currentGameId = gameId;
+        lastPositionKey = "";
+        lastResult = null;
+        lastBookName = "";
+        const existingBoard = getBoardElement();
+        if (existingBoard) clearArrows(existingBoard);
+      }
+
       const board = getBoardElement();
       if (!board) {
         setStatus("No chessboard", "This page does not currently contain a Chess.com board.");
