@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Sudoku Auto Player",
+  "version": "1.0.0",
+  "description": "Reads the current Sudoku.com board, solves it locally, and enters the solution through the page controls.",
+  "content_scripts": [
+    {
+      "matches": ["https://sudoku.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "host_permissions": ["https://sudoku.com/*"]
+}
