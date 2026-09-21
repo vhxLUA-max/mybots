@@ -135,8 +135,10 @@
   function formatEvaluation(score, side, isBook) {
     if (isBook) return "B " + Math.round(score);
     const whiteScore = side === "w" ? score : -score;
-    if (whiteScore >= 990000) return "+M";
-    if (whiteScore <= -990000) return "-M";
+    if (whiteScore >= 990000 || whiteScore <= -990000) {
+      const mateMoves = Math.max(1, Math.ceil((999999 - Math.abs(whiteScore)) / 2));
+      return (whiteScore >= 0 ? "+" : "-") + "M" + mateMoves;
+    }
     const pawns = whiteScore / 100;
     return (pawns >= 0 ? "+" : "") + pawns.toFixed(2);
   }

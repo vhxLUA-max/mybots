@@ -91,11 +91,29 @@
 }
 
 .cmh-eval-label {
-  fill: #fff;
-  font-size: 2.4px;
+  font-size: 1.8px;
   font-weight: 800;
   pointer-events: none;
   paint-order: stroke;
   stroke: rgba(0, 0, 0, 0.9);
-  stroke-width: 0.7px;
+  stroke-width: 0.5px;
+}
+
+.cmh-eval-label.cmh-best {
+  fill: #39e56b;
+}
+
+.cmh-eval-label.cmh-good {
+  fill: #43b7ff;
+  opacity: 0.82;
+}
+
+.cmh-eval-label.cmh-ok {
+  fill: #f5c451;
+  opacity: 0.66;
+}
+
+.cmh-eval-label.cmh-bad {
+  fill: #ff625f;
+  opacity: 0.52;
 }
