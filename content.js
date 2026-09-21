@@ -207,48 +207,18 @@
     return null;
   }
 
-  function parseStoredGame() {
-    const raw = localStorage.getItem("main_game");
-    if (!raw) throw new Error("main_game was not found");
-
-    let game;
-    try {
-      game = JSON.parse(raw);
-    } catch {
-      throw new Error("main_game is not valid JSON");
-    }
-
-    if (!Array.isArray(game.values) || game.values.length !== 81) {
-      throw new Error("main_game.values does not contain 81 cells");
-    }
-
-    const board = game.values.map(value => normalizeValue(value?.val));
-    const editable = game.values.map(value => Boolean(value?.editable));
-    const solution = normalizeSolution(game.solution);
-
-    return {
-      board,
-      editable,
-      solution
-    };
-  }
 
   async function readGame() {
-    try {
-      const state = await requestPage("get");
-      const board = state.board.map(normalizeValue);
-      const editable = state.editable.map(Boolean);
-      const solution = normalizeSolution(state.solution);
+    const state = await requestPage("get");
+    const board = state.board.map(normalizeValue);
+    const editable = state.editable.map(Boolean);
+    const solution = normalizeSolution(state.solution);
 
-      if (board.length !== 81 || editable.length !== 81) {
-        throw new Error("Sudoku.com current game does not contain 81 cells");
-      }
-
-      return { board, editable, solution };
-    } catch (error) {
-      const stored = parseStoredGame();
-      return stored;
+    if (board.length !== 81 || editable.length !== 81) {
+      throw new Error("Sudoku.com current game does not contain 81 cells");
     }
+
+    return { board, editable, solution };
   }
 
   function solveSudoku(input) {
@@ -370,28 +340,14 @@
   }
 
   async function verifySolution(solution) {
-    try {
-      const state = await requestPage("get");
-      return state.board.every((value, index) => normalizeValue(value) === solution[index]);
-    } catch {
-      return verifyStoredSolution(solution);
-    }
-  }
-
-  function verifyStoredSolution(solution) {
-    try {
-      const game = parseStoredGame();
-      return game.board.every((value, index) => value === solution[index]);
-    } catch {
-      return false;
-    }
+    const state = await requestPage("get");
+    return state.board.every((value, index) => normalizeValue(value) === solution[index]);
   }
 
   async function scan() {
     const game = await readGame();
     const empty = game.editable.filter((editable, index) => editable && game.board[index] === 0).length;
     const filled = game.board.filter(Boolean).length;
-    const conflicts = game.boardFromFlat ? 0 : 0;
     setStatus("Scanned: " + empty + " empty, " + filled + " filled");
     return game;
   }
