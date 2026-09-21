@@ -4,7 +4,10 @@
   const dotEl = document.querySelector("#cmh-dot");
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
-  const hiddenButton = document.querySelector("#cmh-hidden");
+  const bookEnabledButton = document.querySelector("#cmh-book-enabled");
+  const bookStatusEl = document.querySelector("#cmh-book-status");
+  const bookFileInput = document.querySelector("#cmh-book-file");
+  const bookClearButton = document.querySelector("#cmh-book-clear");
 
   let tabId = null;
 
@@ -24,6 +27,11 @@
     setConnectionState(connected ? "ready" : "error");
   }
 
+  function formatBookSize(size) {
+    if (size < 1024 * 1024) return Math.max(1, Math.round(size / 1024)) + " KB";
+    return (size / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
   async function getActiveTab() {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     return tabs[0] || null;
@@ -41,6 +49,66 @@
     });
   }
 
+  function sendRuntimeMessage(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, response => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(response);
+      });
+    });
+  }
+
+  function openBookDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("cmh-books", 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("books", {keyPath: "id"});
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Book database error"));
+    });
+  }
+
+  async function saveBook(file) {
+    const db = await openBookDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("books", "readwrite");
+      transaction.objectStore("books").put({
+        id: "active",
+        name: file.name,
+        size: file.size,
+        blob: file
+      });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("Book save error"));
+    });
+  }
+
+  async function loadBookInfo() {
+    const response = await sendRuntimeMessage({type: "bookInfo"});
+    if (!response?.ok) throw new Error(response?.error || "Book information failed.");
+    if (!response.loaded) {
+      bookStatusEl.textContent = "No Polyglot book loaded";
+      bookClearButton.disabled = true;
+      return;
+    }
+
+    bookStatusEl.textContent = response.name + " • " + formatBookSize(response.size);
+    bookClearButton.disabled = false;
+  }
+
+  async function refreshState() {
+    const response = await sendMessage({type: "getState"});
+    if (!response?.ok) throw new Error("Chess Move Helper is not loaded yet.");
+
+    setToggle(alternativesButton, response.showAlternatives);
+    setToggle(bookEnabledButton, response.bookEnabled);
+    setStatus(response.status, response.detail, true);
+  }
+
   async function connect() {
     try {
       const tab = await getActiveTab();
@@ -51,12 +119,8 @@
       }
 
       tabId = tab.id;
-      const response = await sendMessage({ type: "getState" });
-      if (!response?.ok) throw new Error("Chess Move Helper is not loaded yet.");
-
-      setToggle(alternativesButton, response.showAlternatives);
-      setToggle(hiddenButton, response.hidden);
-      setStatus(response.status, response.detail, true);
+      await refreshState();
+      await loadBookInfo();
     } catch (error) {
       setStatus("Connect failed", "Refresh the Chess.com tab, then open the popup again.", false);
       detailEl.title = error.message;
@@ -69,11 +133,12 @@
     scanButton.textContent = "Analyzing...";
 
     try {
-      const response = await sendMessage({ type: "scan" });
+      const response = await sendMessage({type: "scan"});
       if (!response?.ok) throw new Error(response?.error || "Analysis failed.");
       setStatus(response.status, response.detail, true);
       setToggle(alternativesButton, response.showAlternatives);
-      setToggle(hiddenButton, response.hidden);
+      setToggle(bookEnabledButton, response.bookEnabled);
+      await loadBookInfo();
     } catch (error) {
       setStatus("Scan failed", "Refresh the Chess.com tab and try again.", false);
       detailEl.title = error.message;
@@ -98,18 +163,63 @@
     }
   });
 
-  hiddenButton.addEventListener("click", async () => {
+  bookEnabledButton.addEventListener("click", async () => {
     if (tabId === null) return;
     try {
       const response = await sendMessage({
-        type: "setHidden",
-        value: !hiddenButton.classList.contains("cmh-on")
+        type: "setBookEnabled",
+        value: !bookEnabledButton.classList.contains("cmh-on")
       });
       if (!response?.ok) throw new Error(response?.error || "Update failed.");
-      setToggle(hiddenButton, response.hidden);
+      setToggle(bookEnabledButton, response.bookEnabled);
       setStatus(response.status, response.detail, true);
     } catch {
       setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
+    }
+  });
+
+  bookFileInput.addEventListener("change", async () => {
+    const file = bookFileInput.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".bin")) {
+      bookFileInput.value = "";
+      setStatus("Invalid book", "Choose a Polyglot .bin opening book.", false);
+      return;
+    }
+
+    bookClearButton.disabled = true;
+    bookStatusEl.textContent = "Loading " + file.name + "...";
+
+    try {
+      await saveBook(file);
+      await sendRuntimeMessage({type: "clearBookCache"});
+      if (tabId !== null) {
+        await sendMessage({type: "bookChanged"});
+      }
+      await loadBookInfo();
+      setStatus("Book loaded", file.name + " will be used before local engine search.", true);
+    } catch (error) {
+      bookStatusEl.textContent = "Book load failed";
+      setStatus("Book load failed", error.message, false);
+    } finally {
+      bookFileInput.value = "";
+    }
+  });
+
+  bookClearButton.addEventListener("click", async () => {
+    bookClearButton.disabled = true;
+    try {
+      const response = await sendRuntimeMessage({type: "clearBook"});
+      if (!response?.ok) throw new Error(response?.error || "Book clear failed.");
+      if (tabId !== null) {
+        await sendMessage({type: "bookChanged"});
+      }
+      await loadBookInfo();
+      setStatus("Book cleared", "The local engine will handle opening positions.", true);
+    } catch (error) {
+      setStatus("Clear failed", error.message, false);
+      bookClearButton.disabled = false;
     }
   });
 
