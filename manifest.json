@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Chess Move Helper",
-  "version": "1.0.0",
-  "description": "Reads Chess.com analysis positions and shows the current Stockfish move as an arrow.",
+  "version": "1.1.0",
+  "description": "Scans Chess.com boards and analyzes positions locally with a built-in chess engine.",
   "content_scripts": [
     {
-      "matches": ["https://www.chess.com/analysis*"],
-      "js": ["content.js"],
+      "matches": ["https://www.chess.com/*"],
+      "js": ["engine.js", "content.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
     }
