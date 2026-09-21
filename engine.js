@@ -473,6 +473,26 @@
         return 0;
       }
 
+      if (depth >= 4 && !kingInCheck(position, side)) {
+        let hasNonPawnMaterial = false;
+        for (const piece of position) {
+          if (!piece || sideOf(piece) !== side) continue;
+          const type = piece.toUpperCase();
+          if (type !== "P" && type !== "K") {
+            hasNonPawnMaterial = true;
+            break;
+          }
+        }
+
+        if (hasNonPawnMaterial) {
+          const nextSide = side === "w" ? "b" : "w";
+          const nullDepth = depth - 3;
+          const nullScore = -this.negamax(position, nextSide, nullDepth, -beta, -beta + 1, ply + 1);
+          if (this.stop) return nullScore;
+          if (nullScore >= beta) return nullScore;
+        }
+      }
+
       if (depth === 0) return this.quiescence(position, side, alpha, beta);
 
       this.orderMoves(position, side, moves, ply, entry?.bestMove || null);
