@@ -61,3 +61,41 @@
 .cmh-arrow-head.cmh-bad {
   fill: #ff625f;
 }
+
+.cmh-eval-bar-track {
+  fill: #1a1d23;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 0.2;
+}
+
+.cmh-eval-bar-white {
+  fill: #f5f7fb;
+}
+
+.cmh-eval-bar-center {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.25;
+}
+
+.cmh-eval-score {
+  fill: #f5f7fb;
+  font-size: 2.8px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.9);
+  stroke-width: 0.85px;
+}
+
+.cmh-eval-book {
+  fill: #f5c451;
+}
+
+.cmh-eval-label {
+  fill: #fff;
+  font-size: 2.4px;
+  font-weight: 800;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.9);
+  stroke-width: 0.7px;
+}

@@ -132,6 +132,20 @@
     board.querySelector(".cmh-arrow-layer")?.remove();
   }
 
+  function formatEvaluation(score, side, isBook) {
+    if (isBook) return "B " + Math.round(score);
+    const whiteScore = side === "w" ? score : -score;
+    if (whiteScore >= 990000) return "+M";
+    if (whiteScore <= -990000) return "-M";
+    const pawns = whiteScore / 100;
+    return (pawns >= 0 ? "+" : "") + pawns.toFixed(2);
+  }
+
+  function evaluationPercent(score, side) {
+    const whiteScore = side === "w" ? score : -score;
+    return Math.max(0.02, Math.min(0.98, 0.5 + 0.5 * Math.tanh(whiteScore / 400)));
+  }
+
   function classifyMove(move, index, bestScore, isBook) {
     if (index === 0) return "best";
     if (isBook) {
@@ -147,7 +161,7 @@
     return "bad";
   }
 
-  function drawArrows(board, result) {
+  function drawArrows(board, result, side = getSideToMove()) {
     clearArrows(board);
     if (hidden) return;
 
@@ -174,6 +188,43 @@
 
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
     const categories = [...new Set(entries.map(entry => entry.category))];
+    const evaluationTrack = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    evaluationTrack.setAttribute("x", "98.2");
+    evaluationTrack.setAttribute("y", "0.5");
+    evaluationTrack.setAttribute("width", "1.3");
+    evaluationTrack.setAttribute("height", "99");
+    evaluationTrack.classList.add("cmh-eval-bar-track");
+    svg.appendChild(evaluationTrack);
+
+    if (!result.book) {
+      const whiteRatio = evaluationPercent(result.score, side);
+      const whiteHeight = whiteRatio * 99;
+      const whiteY = orientation.flipped ? 0.5 : 99.5 - whiteHeight;
+      const whiteBar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      whiteBar.setAttribute("x", "98.2");
+      whiteBar.setAttribute("y", String(whiteY));
+      whiteBar.setAttribute("width", "1.3");
+      whiteBar.setAttribute("height", String(whiteHeight));
+      whiteBar.classList.add("cmh-eval-bar-white");
+      svg.appendChild(whiteBar);
+
+      const centerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      centerLine.setAttribute("x1", "97.9");
+      centerLine.setAttribute("x2", "99.8");
+      centerLine.setAttribute("y1", "50");
+      centerLine.setAttribute("y2", "50");
+      centerLine.classList.add("cmh-eval-bar-center");
+      svg.appendChild(centerLine);
+    }
+
+    const evaluationLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    evaluationLabel.setAttribute("x", "97");
+    evaluationLabel.setAttribute("y", "4.5");
+    evaluationLabel.setAttribute("text-anchor", "end");
+    evaluationLabel.textContent = formatEvaluation(result.score, side, result.book);
+    evaluationLabel.classList.add("cmh-eval-score");
+    if (result.book) evaluationLabel.classList.add("cmh-eval-book");
+    svg.appendChild(evaluationLabel);
     for (const category of categories) {
       const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
       marker.setAttribute("id", "cmh-arrow-head-" + category);
@@ -214,6 +265,22 @@
       line.setAttribute("marker-end", "url(#cmh-arrow-head-" + category + ")");
       line.classList.add("cmh-arrow", "cmh-" + category);
       svg.appendChild(line);
+
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      const dx = targetPoint.x - sourcePoint.x;
+      const dy = targetPoint.y - sourcePoint.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const normalX = -dy / length;
+      const normalY = dx / length;
+      const labelX = Math.max(7, Math.min(93, (sourcePoint.x + targetPoint.x) / 2 + normalX * 2.3));
+      const labelY = Math.max(5, Math.min(95, (sourcePoint.y + targetPoint.y) / 2 + normalY * 2.3));
+      label.setAttribute("x", String(labelX));
+      label.setAttribute("y", String(labelY));
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("dominant-baseline", "middle");
+      label.textContent = formatEvaluation(move.score, side, result.book);
+      label.classList.add("cmh-eval-label", "cmh-" + category);
+      svg.appendChild(label);
     });
 
     if (entries.length) board.appendChild(svg);
@@ -325,7 +392,7 @@
 
       lastResult = result;
       lastBookName = result.bookName || "";
-      drawArrows(board, result);
+      drawArrows(board, result, side);
       lastPositionKey = key;
 
       if (result.book) {
@@ -366,7 +433,7 @@
         if (board) clearArrows(board);
         setStatus("Arrows hidden", "The local engine is still running.");
       } else if (board && lastResult) {
-        drawArrows(board, lastResult);
+        drawArrows(board, lastResult, getSideToMove());
         setStatus(
           lastResult.book ? "Book " + moveName(lastResult) : "Best " + moveName(lastResult),
           lastResult.book ? (lastResult.bookName || "Opening book") : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
@@ -379,7 +446,7 @@
     if (message?.type === "setAlternatives") {
       showAlternatives = Boolean(message.value);
       const board = getBoardElement();
-      if (board && lastResult && !hidden) drawArrows(board, lastResult);
+      if (board && lastResult && !hidden) drawArrows(board, lastResult, getSideToMove());
       sendResponse(stateResponse());
       return;
     }
