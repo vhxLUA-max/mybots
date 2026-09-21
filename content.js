@@ -4,9 +4,11 @@
 
   let hidden = false;
   let showAlternatives = true;
+  let bookEnabled = true;
   let busy = false;
   let lastPositionKey = "";
   let lastResult = null;
+  let lastBookName = "";
   let currentStatus = "Waiting for board...";
   let currentDetail = "Open a Chess.com board to begin.";
 
@@ -21,7 +23,9 @@
       status: currentStatus,
       detail: currentDetail,
       hidden,
-      showAlternatives
+      showAlternatives,
+      bookEnabled,
+      bookName: lastBookName
     };
   }
 
@@ -68,6 +72,15 @@
     return pieces;
   }
 
+  function getCastlingRights(position) {
+    let rights = 0;
+    if (position[4] === "K" && position[7] === "R") rights |= 1;
+    if (position[4] === "K" && position[0] === "R") rights |= 2;
+    if (position[60] === "k" && position[63] === "r") rights |= 4;
+    if (position[60] === "k" && position[56] === "r") rights |= 8;
+    return rights;
+  }
+
   function getOrientation(board) {
     const labels = Array.from(board.querySelectorAll(".coordinates text"))
       .map(node => node.textContent.trim())
@@ -108,8 +121,15 @@
     board.querySelector(".cmh-arrow-layer")?.remove();
   }
 
-  function classifyMove(move, index, bestScore) {
+  function classifyMove(move, index, bestScore, isBook) {
     if (index === 0) return "best";
+    if (isBook) {
+      const ratio = bestScore > 0 ? move.score / bestScore : 0;
+      if (ratio >= 0.65) return "good";
+      if (ratio >= 0.35) return "ok";
+      return "bad";
+    }
+
     const loss = bestScore - move.score;
     if (loss <= 30) return "good";
     if (loss <= 100) return "ok";
@@ -151,7 +171,7 @@
     svg.appendChild(defs);
 
     moves.forEach((move, index) => {
-      const category = classifyMove(move, index, result.score);
+      const category = classifyMove(move, index, result.score, result.book);
       categories.add(category);
 
       const source = indexToSquare(move.from);
@@ -189,6 +209,35 @@
       (move.promotion ? "=" + move.promotion : "");
   }
 
+  async function lookupBook(position, side) {
+    if (!bookEnabled) return null;
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "bookLookup",
+        position,
+        side,
+        castlingRights: getCastlingRights(position)
+      });
+
+      if (!response?.ok || !response.found || !response.moves?.length) return null;
+
+      return {
+        from: response.moves[0].from,
+        to: response.moves[0].to,
+        promotion: response.moves[0].promotion,
+        score: response.moves[0].score,
+        depth: 0,
+        nodes: 0,
+        alternatives: response.moves,
+        book: true,
+        bookName: response.name
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async function scan() {
     if (busy) return stateResponse();
     busy = true;
@@ -219,25 +268,38 @@
 
       if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer")) return stateResponse();
 
-      setStatus("Thinking...", "Analyzing the position with the built-in local engine.");
+      setStatus("Thinking...", "Checking the opening book before engine search.");
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      const result = engine.search(position, side, 4, 40000, 4);
+      const bookResult = await lookupBook(position, side);
+      const result = bookResult || engine.search(position, side, 4, 40000, 4);
+
       if (!result) {
         clearArrows(board);
         lastResult = null;
+        lastBookName = "";
         lastPositionKey = key;
         setStatus("No legal move", "The current position has no legal move available.");
         return stateResponse();
       }
 
       lastResult = result;
+      lastBookName = result.bookName || "";
       drawArrows(board, result);
       lastPositionKey = key;
-      setStatus(
-        "Best " + moveName(result),
-        "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
-      );
+
+      if (result.book) {
+        setStatus(
+          "Book " + moveName(result),
+          (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
+        );
+      } else {
+        setStatus(
+          "Best " + moveName(result),
+          "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
+        );
+      }
+
       return stateResponse();
     } finally {
       busy = false;
@@ -266,8 +328,8 @@
       } else if (board && lastResult) {
         drawArrows(board, lastResult);
         setStatus(
-          "Best " + moveName(lastResult),
-          "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
+          lastResult.book ? "Book " + moveName(lastResult) : "Best " + moveName(lastResult),
+          lastResult.book ? (lastResult.bookName || "Opening book") : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
         );
       }
       sendResponse(stateResponse());
@@ -279,6 +341,22 @@
       const board = getBoardElement();
       if (board && lastResult && !hidden) drawArrows(board, lastResult);
       sendResponse(stateResponse());
+      return;
+    }
+
+    if (message?.type === "setBookEnabled") {
+      bookEnabled = Boolean(message.value);
+      lastPositionKey = "";
+      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
+      return true;
+    }
+
+    if (message?.type === "bookChanged") {
+      lastPositionKey = "";
+      lastBookName = "";
+      scan().catch(() => {});
+      sendResponse({ok: true});
+      return;
     }
   });
 
