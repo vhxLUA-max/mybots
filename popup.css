@@ -208,3 +208,41 @@ body {
   color: #697284;
   font-size: 9px;
 }
+
+.cmh-book-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 13px;
+  border-top: 1px solid #242934;
+}
+
+.cmh-book-button,
+.cmh-book-clear {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #303645;
+  border-radius: 8px;
+  background: #1b1f27;
+  color: #dce2ec;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.cmh-book-button:hover,
+.cmh-book-clear:hover:not(:disabled) {
+  background: #232833;
+  border-color: #3a4252;
+}
+
+.cmh-book-row input {
+  display: none;
+}
+
+.cmh-book-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
