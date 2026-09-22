@@ -391,6 +391,7 @@ test("mate distance remains stable through the transposition table", () => {
   const second = engine.search(position, "w", 4, 50000, 1, 0, null);
   assert.equal(first.score, 999998);
   assert.equal(second.score, 999998);
+  assert.equal(engine.generation, 2);
 });
 
 test("moveKey maps UCI squares to engine indices", () => {
