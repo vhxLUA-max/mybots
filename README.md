@@ -36,64 +36,67 @@ Browser compatibility should be tested on the target browser before distribution
 
 ### Chrome
 
-1. Download or clone this repository.
-2. Open `chrome://extensions`.
-3. Enable **Developer mode**.
-4. Click **Load unpacked**.
-5. Select the repository folder.
-6. Pin **Chess Move Helper** from the extensions menu.
-7. Open a Chess.com board.
-8. Open the extension and use **Analyze Position**.
+1. Download the repository as a ZIP from GitHub.
+2. Extract the ZIP file to a normal folder.
+3. Open `chrome://extensions/`.
+4. Enable **Developer mode**.
+5. Click **Load unpacked**.
+6. Select the extracted `mybots` folder.
+7. Pin **Chess Move Helper** from the extensions menu.
+8. Open a Chess.com board.
+9. Open the extension and use **Analyze Position**.
 
 Chrome's official extension documentation covers desktop installation, and Chrome does not support installing extensions directly on mobile devices. See the [Chrome extension installation guide](https://support.google.com/chrome/answer/2664769) and [Chrome Web Store troubleshooting](https://support.google.com/chrome_webstore/answer/1698338).
 
 ### Microsoft Edge
 
-1. Download or clone this repository.
-2. Open `edge://extensions`.
-3. Enable **Developer mode**.
-4. Choose **Load unpacked**.
-5. Select the repository folder.
-6. Open a Chess.com board and use the extension.
+1. Download the repository as a ZIP from GitHub.
+2. Extract the ZIP file to a normal folder.
+3. Open `edge://extensions/`.
+4. Enable **Developer mode**.
+5. Click **Load unpacked**.
+6. Select the extracted `mybots` folder.
+7. Open a Chess.com board and use the extension.
 
 Edge supports Chromium-compatible extensions and can install compatible extensions from the Chrome Web Store when extensions from other stores are allowed. See [Microsoft's Edge extension guide](https://support.microsoft.com/en-us/edge/add-turn-off-or-remove-extensions-in-microsoft-edge).
 
 ### Brave, Opera, and other Chromium browsers
 
-1. Open the browser's extension-management page.
-2. Enable its developer or developer-mode option.
-3. Choose **Load unpacked** or the equivalent local-extension option.
-4. Select the repository folder.
-5. Open Chess.com and launch the extension.
+1. Download the repository as a ZIP from GitHub.
+2. Extract the ZIP file to a normal folder.
+3. Open the browser's extension-management page.
+4. Enable its developer or developer-mode option.
+5. Choose **Load unpacked** or the equivalent local-extension option.
+6. Select the extracted `mybots` folder.
+7. Open Chess.com and launch the extension.
 
 The exact menu names can differ between browsers.
 
 ## Mobile Installation
 
-Mobile extension support depends on the browser.
+Mobile installation depends on whether the browser supports loading unpacked WebExtensions.
 
-### Android: Firefox
+### Android
 
-Firefox for Android supports extensions/add-ons through its Add-ons Manager and the Firefox Add-ons website. See [Mozilla's Firefox for Android extension guide](https://support.mozilla.org/en-US/kb/find-and-install-add-ons-firefox-android).
+1. Download the repository as a ZIP from GitHub.
+2. Extract the ZIP file on your phone.
+3. Use a mobile browser that supports installing or loading unpacked WebExtensions.
+4. Open that browser's extension-management or developer page.
+5. Choose **Load unpacked** or the browser's equivalent option.
+6. Select the extracted `mybots` folder.
+7. Open Chess.com in that browser.
+8. Open the extension and use **Analyze Position**.
 
-For a published Firefox-compatible version:
-
-1. Install **Firefox for Android**.
-2. Open the Firefox menu.
-3. Tap **Add-ons** or **Extensions**.
-4. Find the compatible Chess Move Helper add-on.
-5. Tap **+** to install it.
-6. Open Chess.com and use the extension.
-
-The current GitHub repository is an unpacked desktop extension package. A Firefox-specific, published build may be required for installation on Firefox for Android.
-
-### Android: Chrome
-
-Chrome for Android does not support installing extensions directly. See the [Chrome extension installation guide](https://support.google.com/chrome/answer/2664769) and [Chrome Web Store troubleshooting](https://support.google.com/chrome_webstore/answer/1698338).
+Not every mobile browser supports loading unpacked extensions. Chrome for Android and many other mobile browsers do not provide the same extension-management features as their desktop versions.
 
 ### iPhone / iPad
 
-This repository is not directly installable as an unpacked extension in Safari on iPhone or iPad. A Safari Web Extension build and the corresponding Apple packaging/distribution process would be required.
+1. Download the repository ZIP.
+2. Extract the project files using the device's file manager or another archive tool.
+3. A browser that supports loading unpacked WebExtensions is required.
+4. If the browser does not support unpacked WebExtensions, this repository cannot be installed directly as an extension on that browser.
+
+The exact mobile installation steps depend on the browser because mobile extension support varies by browser.
 
 ## Dashboard
 
