@@ -1025,7 +1025,6 @@
         }
 
         let iteration = this.searchRoot(position, side, depth, alpha, beta, castlingRights, epSquare);
-        if (!iteration.complete && !this.stop) break;
 
         if (!this.stop && useAspiration && !finalAlternatives &&
             (iteration.failLow || iteration.failHigh)) {
