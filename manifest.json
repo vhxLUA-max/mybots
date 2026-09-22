@@ -19,10 +19,16 @@
     },
     {
       "matches": ["https://www.chess.com/*"],
-      "js": ["engine.js", "content.js"],
+      "js": ["content.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
     }
   ],
-  "host_permissions": ["https://www.chess.com/*"]
+  "host_permissions": ["https://www.chess.com/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["engine-worker.js"],
+      "matches": ["https://www.chess.com/*"]
+    }
+  ]
 }
