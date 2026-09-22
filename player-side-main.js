@@ -8,15 +8,27 @@
     return null;
   };
 
+  const setAttributeValue = (board, name, value) => {
+    if (value === null) {
+      board.removeAttribute(name);
+      return;
+    }
+    if (board.getAttribute(name) !== value) board.setAttribute(name, value);
+  };
+
   const sync = () => {
     const board = document.querySelector("wc-chess-board");
     if (!board) return;
 
     try {
-      const side = normalize(board.game?.getPlayingAs?.());
-      if (side && board.getAttribute("data-cmh-player-side") !== side) {
-        board.setAttribute("data-cmh-player-side", side);
-      }
+      const game = board.game;
+      const playerSide = normalize(game?.getPlayingAs?.());
+      const turn = normalize(game?.getTurn?.());
+      const fen = typeof game?.getFEN === "function" ? game.getFEN() : null;
+
+      setAttributeValue(board, "data-cmh-player-side", playerSide);
+      setAttributeValue(board, "data-cmh-turn", turn);
+      setAttributeValue(board, "data-cmh-fen", typeof fen === "string" && fen.split(" ").length >= 4 ? fen : null);
     } catch {}
   };
 
