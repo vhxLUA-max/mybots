@@ -283,6 +283,11 @@ test("engine worker entry point references the shared engine", () => {
   assert.match(worker, /importScripts\("engine\.js"\)/);
   assert.match(worker, /self\.onmessage/);
   assert.doesNotThrow(() => new Function(worker));
+});\n\ntest("background exposes the engine service fallback", () => {
+  const background = fs.readFileSync(require("node:path").join(root, "background.js"), "utf8");
+  assert.match(background, /importScripts\("engine\.js", "book\.js"\)/);
+  assert.match(background, /message\?\.type === "engineTask"/);
+  assert.match(background, /globalThis\.__CMH_ENGINE__\.search/);
 });
 
 test("starting position has 20 legal moves", () => {
