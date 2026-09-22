@@ -1057,15 +1057,6 @@
       const bookResult = await lookupBook(position, side);
       let result = bookResult;
 
-      if (result?.gameState === "checkmate" || result?.gameState === "stalemate") {
-        clearArrows(board);
-        lastResult = null;
-        lastBookName = "";
-        lastPositionKey = key;
-        setStatus(result.gameState === "checkmate" ? "Checkmate" : "Stalemate", "No legal moves remain.");
-        return stateResponse();
-      }
-
       if (!result) {
         const maiaRatings = getMaiaRatings(side);
 
@@ -1091,6 +1082,15 @@
         lastBookName = "";
         lastPositionKey = key;
         setStatus("No legal move", "The current position has no legal move available.");
+        return stateResponse();
+      }
+
+      if (result.gameState === "checkmate" || result.gameState === "stalemate") {
+        clearArrows(board);
+        lastResult = null;
+        lastBookName = "";
+        lastPositionKey = key;
+        setStatus(result.gameState === "checkmate" ? "Checkmate" : "Stalemate", "No legal moves remain.");
         return stateResponse();
       }
 
