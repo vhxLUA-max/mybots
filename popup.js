@@ -11,6 +11,7 @@
   const bookClearButton = document.querySelector("#cmh-book-clear");
   const depthInput = document.querySelector("#cmh-depth");
   const depthValue = document.querySelector("#cmh-depth-value");
+  const dashboardOpenButton = document.querySelector("#cmh-dashboard-open");
 
   let tabId = null;
 
@@ -36,6 +37,11 @@
   }
 
   async function getActiveTab() {
+    if (document.body.dataset.cmhPage === "dashboard") {
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      return tabs.find(tab => tab.url?.startsWith("https://www.chess.com/")) || null;
+    }
+
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     return tabs[0] || null;
   }
@@ -295,6 +301,12 @@
       bookClearButton.disabled = false;
     }
   });
+
+  if (dashboardOpenButton) {
+    dashboardOpenButton.addEventListener("click", async () => {
+      await chrome.tabs.create({url: chrome.runtime.getURL("dashboard.html")});
+    });
+  }
 
   connect();
 })();
