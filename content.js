@@ -283,15 +283,9 @@
 
   function readPlayerSide() {
     const board = getBoardElement();
-    const game = board?.game;
 
-    if (game && typeof game.getPlayingAs === "function") {
-      try {
-        const value = game.getPlayingAs();
-        if (value === 1 || value === "1" || value === "w" || value === "white") return "w";
-        if (value === 2 || value === "2" || value === "b" || value === "black") return "b";
-      } catch {}
-    }
+    const bridgedSide = board?.getAttribute("data-cmh-player-side");
+    if (bridgedSide === "w" || bridgedSide === "b") return bridgedSide;
 
     const zones = [
       {
@@ -329,8 +323,8 @@
       }
 
       const raw = parts.filter(Boolean).join(" ").toLowerCase();
-      if (/\bcc-user-rating-white\b|\bcolor-white\b|\bwhite-player\b|\bwhite\b/.test(raw)) return "w";
-      if (/\bcc-user-rating-black\b|\bcolor-black\b|\bblack-player\b|\bblack\b/.test(raw)) return "b";
+      if (/\bcc-user-rating-white\b|\bcolor-white\b|\bwhite-player\b/.test(raw)) return "w";
+      if (/\bcc-user-rating-black\b|\bcolor-black\b|\bblack-player\b/.test(raw)) return "b";
       return null;
     };
 
