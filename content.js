@@ -12,6 +12,10 @@
   let lastResult = null;
   let lastBookName = "";
   let currentGameId = "";
+  let castlingRights = 0;
+  let epSquare = null;
+  let stateInitialized = false;
+  let lastObservedPosition = null;
   let currentStatus = "Waiting for board...";
   let currentDetail = "Open a Chess.com board to begin.";
 
@@ -103,6 +107,48 @@
     return {
       flipped: rankLabels[0] === "1" || fileLabels[0] === "h"
     };
+  }
+
+  function samePosition(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index++) {
+      if (a[index] !== b[index]) return false;
+    }
+    return true;
+  }
+
+  function updatePositionState(position) {
+    if (!stateInitialized) {
+      castlingRights = getCastlingRights(position);
+      epSquare = null;
+      stateInitialized = true;
+      lastObservedPosition = position.slice();
+      return;
+    }
+
+    if (samePosition(lastObservedPosition, position)) return;
+
+    if (lastObservedPosition[4] !== "K" || position[4] !== "K") castlingRights &= ~3;
+    if (lastObservedPosition[60] !== "k" || position[60] !== "k") castlingRights &= ~12;
+    if (lastObservedPosition[0] !== "R" || position[0] !== "R") castlingRights &= ~2;
+    if (lastObservedPosition[7] !== "R" || position[7] !== "R") castlingRights &= ~1;
+    if (lastObservedPosition[56] !== "r" || position[56] !== "r") castlingRights &= ~8;
+    if (lastObservedPosition[63] !== "r" || position[63] !== "r") castlingRights &= ~4;
+
+    epSquare = null;
+    for (let from = 0; from < 64 && epSquare === null; from++) {
+      const previousPiece = lastObservedPosition[from];
+      if (!previousPiece || previousPiece.toUpperCase() !== "P" || position[from] === previousPiece) continue;
+      for (let to = 0; to < 64; to++) {
+        if (position[to] === previousPiece && lastObservedPosition[to] !== previousPiece &&
+            Math.abs(to - from) === 16) {
+          epSquare = (from + to) >> 1;
+          break;
+        }
+      }
+    }
+
+    lastObservedPosition = position.slice();
   }
 
   function getSideToMove() {
@@ -289,7 +335,8 @@
   }
 
   function getPositionKey(position, side) {
-    return position.map((piece, index) => piece ? index + ":" + piece : "").filter(Boolean).join("|") + "|" + side;
+    return position.map((piece, index) => piece ? index + ":" + piece : "").filter(Boolean).join("|") +
+      "|" + side + "|" + castlingRights + "|" + (epSquare ?? -1);
   }
 
   function moveName(move) {
@@ -308,7 +355,8 @@
         position,
         side,
         bookMode,
-        castlingRights: getCastlingRights(position)
+        castlingRights,
+        epFile: Number.isInteger(epSquare) ? epSquare & 7 : null
       });
 
       if (!response?.ok || !response.found || !response.moves?.length) return null;
@@ -341,6 +389,10 @@
         lastPositionKey = "";
         lastResult = null;
         lastBookName = "";
+        castlingRights = 0;
+        epSquare = null;
+        stateInitialized = false;
+        lastObservedPosition = null;
         const existingBoard = getBoardElement();
         if (existingBoard) clearArrows(existingBoard);
       }
@@ -366,7 +418,8 @@
       }
 
       const side = getSideToMove();
-      const gameState = engine.getGameState(position, side);
+      updatePositionState(position);
+      const gameState = engine.getGameState(position, side, castlingRights, epSquare);
       const key = getPositionKey(position, side);
 
       if (force) {
@@ -391,7 +444,15 @@
 
       const bookResult = await lookupBook(position, side);
       const nodeLimit = ({2: 25000, 3: 50000, 4: 100000, 5: 220000, 6: 400000})[engineDepth] || 100000;
-      const result = bookResult || engine.search(position, side, engineDepth, nodeLimit, 4);
+      const result = bookResult || engine.search(
+        position,
+        side,
+        engineDepth,
+        nodeLimit,
+        4,
+        castlingRights,
+        epSquare
+      );
 
       if (!result) {
         clearArrows(board);
