@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Chess Move Helper",
   "version": "1.4.0",
-  "description": "Scans Chess.com boards and analyzes positions locally with a built-in chess engine and randomized Polyglot opening books.",
+  "description": "Scans Chess.com boards and uses Maia 3 as the move predictor with optional randomized Polyglot opening books.",
   "action": {
     "default_title": "Chess Move Helper",
     "default_popup": "popup.html"
