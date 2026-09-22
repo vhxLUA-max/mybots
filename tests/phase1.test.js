@@ -296,7 +296,7 @@ test("MAIN-world bridge exposes player side, turn, and FEN", () => {
 });
 
 test("content state uses authoritative FEN side, castling, and en passant", async () => {
-  const fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq e6 0 3";
+  const fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq d6 0 3";
   const engineResult = {
     gameState: "playing",
     from: index("e5"),
@@ -318,11 +318,11 @@ test("content state uses authoritative FEN side, castling, and en passant", asyn
     positionFromFen(fen),
     "b",
     15,
-    index("e6")
+    index("d6")
   ]);
   assert.equal(result.captured.searchArgs[1], "b");
   assert.equal(result.captured.searchArgs[5], 15);
-  assert.equal(result.captured.searchArgs[6], index("e6"));
+  assert.equal(result.captured.searchArgs[6], index("d6"));
   assert.equal(result.response.playerSide, "b");
 });
 
