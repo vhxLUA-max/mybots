@@ -601,7 +601,8 @@
       const normalizedScore = this.writeTTScore(score, ply);
       const existing = this.table.get(key);
 
-      if (existing && existing.depth > depth && existing.flag === "EXACT" && flag !== "EXACT") return;
+      if (existing && (existing.depth > depth ||
+          (existing.depth === depth && existing.flag === "EXACT" && flag !== "EXACT"))) return;
 
       this.table.set(key, {
         depth,
