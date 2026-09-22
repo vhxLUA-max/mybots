@@ -2,26 +2,27 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const path = require("node:path");
 
-const root = require("node:path").resolve(__dirname, "..");
+const root = path.resolve(__dirname, "..");
 
-function loadEngine() {
-  const sandbox = {
-    window: {},
-    console,
-    setInterval() {}
-  };
-  vm.runInNewContext(fs.readFileSync(require("node:path").join(root, "engine.js"), "utf8"), sandbox, {
-    filename: "engine.js"
-  });
-  return sandbox.window.__CMH_ENGINE__;
+function loadRules() {
+  const sandbox = {console};
+  vm.runInNewContext(
+    fs.readFileSync(path.join(root, "maia3", "chess-rules.js"), "utf8"),
+    sandbox,
+    {filename: "maia3/chess-rules.js"}
+  );
+  return sandbox.__CMH_CHESS_RULES__;
 }
 
 function loadBook() {
   const sandbox = {console};
-  vm.runInNewContext(fs.readFileSync(require("node:path").join(root, "book.js"), "utf8"), sandbox, {
-    filename: "book.js"
-  });
+  vm.runInNewContext(
+    fs.readFileSync(path.join(root, "book.js"), "utf8"),
+    sandbox,
+    {filename: "book.js"}
+  );
   return sandbox.CMH_BOOK;
 }
 
@@ -51,12 +52,8 @@ function index(square) {
   return (Number(square[1]) - 1) * 8 + square.charCodeAt(0) - 97;
 }
 
-function moveKey(move) {
-  return index(move.slice(0, 2)) + ":" + index(move.slice(2, 4));
-}
-
 function createNode(attributes = {}) {
-  const node = {
+  return {
     attributes: {...attributes},
     children: [],
     style: {
@@ -89,12 +86,12 @@ function createNode(attributes = {}) {
     },
     querySelectorAll() {
       return [];
-    }
+    },
+    remove() {}
   };
-  return node;
 }
 
-function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailable = true, maiaAvailable = true}) {
+function loadContentHarness({fen, playerSide, turn, maiaResult}) {
   let captured = null;
   let messageListener = null;
 
@@ -105,18 +102,9 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
   });
 
   const engine = {
-    getGameState(...args) {
-      captured = {...captured, type: "gameState", args, gameStateArgs: args};
-      return "playing";
-    },
     maiaSearch(...args) {
       captured = {...captured, type: "maiaSearch", maiaArgs: args};
-      if (!maiaAvailable) throw new Error("Maia unavailable");
-      return engineResult;
-    },
-    search(...args) {
-      captured = {...captured, type: "search", searchArgs: args};
-      return engineResult;
+      return maiaResult;
     }
   };
 
@@ -140,7 +128,6 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
 
   class FakeWorker {
     constructor() {
-      if (!workerAvailable) throw new Error("Worker unavailable");
       this.onmessage = null;
       this.onerror = null;
     }
@@ -148,38 +135,16 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
     postMessage(message) {
       setTimeout(() => {
         try {
-          let result;
-          if (message.type === "gameState") {
-            result = engine.getGameState(
-              message.position,
-              message.side,
-              message.castlingRights,
-              message.epSquare
-            );
-          } else if (message.type === "maiaSearch") {
-            result = engine.maiaSearch(
-              message.position,
-              message.side,
-              message.alternativeCount,
-              message.castlingRights,
-              message.epSquare,
-              message.selfElo,
-              message.oppoElo
-            );
-          } else if (message.type === "search") {
-            result = engine.search(
-              message.position,
-              message.side,
-              message.maxDepth,
-              message.nodeLimit,
-              message.alternativeCount,
-              message.castlingRights,
-              message.epSquare
-            );
-          } else {
-            throw new Error("Unknown fake worker task");
-          }
-
+          if (message.type !== "maiaSearch") throw new Error("Unknown Maia task");
+          const result = engine.maiaSearch(
+            message.position,
+            message.side,
+            message.alternativeCount,
+            message.castlingRights,
+            message.epSquare,
+            message.selfElo,
+            message.oppoElo
+          );
           this.onmessage?.({data: {taskId: message.taskId, ok: true, result}});
         } catch (error) {
           this.onmessage?.({
@@ -199,50 +164,15 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
   const chrome = {
     runtime: {
       lastError: null,
-      getURL(path) {
-        return "chrome-extension://test/" + path;
+      getURL(value) {
+        return "chrome-extension://test/" + value;
       },
       sendMessage(message, callback) {
-        if (message?.type === "engineTask") {
-          const payload = message.payload || {};
-          if (message.task === "maiaSearch" && !maiaAvailable) {
-            captured = {...captured, type: "maiaSearch"};
-            callback({ok: false, error: "Maia unavailable"});
-            return;
-          }
-
-          captured = {
-            ...captured,
-            type: message.task,
-            ...(message.task === "maiaSearch"
-              ? {
-                maiaArgs: [
-                  payload.position,
-                  payload.side,
-                  payload.alternativeCount,
-                  payload.castlingRights,
-                  payload.epSquare,
-                  payload.selfElo,
-                  payload.oppoElo
-                ]
-              }
-              : {
-                searchArgs: [
-                  payload.position,
-                  payload.side,
-                  payload.maxDepth,
-                  payload.nodeLimit,
-                  payload.alternativeCount,
-                  payload.castlingRights,
-                  payload.epSquare
-                ]
-              })
-          };
-
-          callback({ok: true, result: engineResult});
+        if (message?.type === "bookLookup") {
+          callback({ok: true, found: false, moves: [], name: "", sourceId: ""});
           return;
         }
-        callback({ok: true, found: false});
+        callback({ok: true});
       },
       onMessage: {
         addListener(listener) {
@@ -274,7 +204,7 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
   };
 
   vm.runInNewContext(
-    fs.readFileSync(require("node:path").join(root, "content.js"), "utf8"),
+    fs.readFileSync(path.join(root, "content.js"), "utf8"),
     sandbox,
     {filename: "content.js"}
   );
@@ -285,11 +215,10 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
         reject(new Error("content state listener was not registered"));
         return;
       }
-      let response;
-      messageListener({type: "getState"}, null, value => {
-        response = value;
+
+      messageListener({type: "getState"}, null, response => {
+        resolve({captured, response});
       });
-      resolve({captured, response});
     }, 75);
   });
 }
@@ -327,7 +256,7 @@ function loadMainBridgeHarness({playerSide, turn, fen}) {
   };
 
   vm.runInNewContext(
-    fs.readFileSync(require("node:path").join(root, "player-side-main.js"), "utf8"),
+    fs.readFileSync(path.join(root, "player-side-main.js"), "utf8"),
     sandbox,
     {filename: "player-side-main.js"}
   );
@@ -335,87 +264,68 @@ function loadMainBridgeHarness({playerSide, turn, fen}) {
   return board;
 }
 
-test("Maia 3 provider wiring is present", () => {
-  const worker = fs.readFileSync(require("node:path").join(root, "engine-worker.js"), "utf8");
-  const maia = fs.readFileSync(require("node:path").join(root, "maia3", "maia3-engine.js"), "utf8");
-  const manifest = JSON.parse(fs.readFileSync(require("node:path").join(root, "manifest.json"), "utf8"));
+test("Maia provider does not depend on the deleted local engine", () => {
+  const maia = fs.readFileSync(path.join(root, "maia3", "maia3-engine.js"), "utf8");
+  const worker = fs.readFileSync(path.join(root, "engine-worker.js"), "utf8");
+  const background = fs.readFileSync(path.join(root, "background.js"), "utf8");
 
-  assert.match(worker, /maia3\/maia3-engine\.js/);
+  assert.doesNotMatch(maia, /__CMH_ENGINE__/);
+  assert.doesNotMatch(worker, /engine\.js|__CMH_ENGINE__/);
+  assert.doesNotMatch(background, /engine\.js|__CMH_ENGINE__\.search|__CMH_ENGINE__\.getGameState/);
+  assert.match(maia, /__CMH_CHESS_RULES__/);
   assert.match(maia, /logits_move/);
   assert.match(maia, /4352/);
-  assert.equal(manifest.host_permissions.includes("https://raw.githubusercontent.com/*"), true);
-  assert.equal(manifest.web_accessible_resources[0].resources.includes("maia3/*"), true);
-  assert.equal(manifest.web_accessible_resources[0].resources.includes("ort.min.js"), true);
-  assert.equal(manifest.content_security_policy.extension_pages.includes("wasm-unsafe-eval"), true);
 });
 
-test("engine worker entry point references the shared engine", () => {
-  const worker = fs.readFileSync(require("node:path").join(root, "engine-worker.js"), "utf8");
-  assert.match(worker, /importScripts\("engine\.js"\)/);
-  assert.match(worker, /self\.onmessage/);
-  assert.doesNotThrow(() => new Function(worker));
+test("Maia worker is the only analysis worker task", () => {
+  const worker = fs.readFileSync(path.join(root, "engine-worker.js"), "utf8");
+  assert.match(worker, /message\.type === "maiaSearch"/);
+  assert.doesNotMatch(worker, /message\.type === "search"/);
+  assert.doesNotMatch(worker, /message\.type === "gameState"/);
 });
 
-test("background exposes the engine service fallback", () => {
-  const background = fs.readFileSync(require("node:path").join(root, "background.js"), "utf8");
-  assert.match(background, /importScripts\("engine\.js", "book\.js"\)/);
-  assert.match(background, /message\?\.type === "engineTask"/);
-  assert.match(background, /globalThis\.__CMH_ENGINE__\.search/);
-});
-
-test("starting position has 20 legal moves", () => {
-  const engine = loadEngine();
+test("Maia uses the independent chess legality layer", () => {
+  const rules = loadRules();
   const position = positionFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-  const result = engine.search(position, "w", 1, 50000, 32, 15, null);
-  assert.equal(result.gameState, "playing");
-  assert.equal(result.alternatives.length, 20);
+  const moves = rules.legalMoves(position, "w", 15, null);
+  assert.equal(moves.length, 20);
 });
 
-test("fool's mate position is checkmate", () => {
-  const engine = loadEngine();
+test("chess legality layer detects checkmate", () => {
+  const rules = loadRules();
   const position = positionFromFen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 3");
-  assert.equal(engine.getGameState(position, "w", 15, null), "checkmate");
+  assert.equal(rules.getGameState(position, "w", 15, null), "checkmate");
 });
 
-test("classic stalemate position is stalemate", () => {
-  const engine = loadEngine();
+test("chess legality layer detects stalemate", () => {
+  const rules = loadRules();
   const position = positionFromFen("7k/5K2/6Q1/8/8/8/8/8 b - - 0 1");
-  assert.equal(engine.getGameState(position, "b", 0, null), "stalemate");
+  assert.equal(rules.getGameState(position, "b", 0, null), "stalemate");
 });
 
 test("castling moves are generated when legal", () => {
-  const engine = loadEngine();
+  const rules = loadRules();
   const position = positionFromFen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
-  const result = engine.search(position, "w", 1, 50000, 32, 15, null);
-  const keys = new Set(result.alternatives.map(move => move.from + ":" + move.to));
+  const moves = rules.legalMoves(position, "w", 15, null);
+  const keys = new Set(moves.map(move => move.from + ":" + move.to));
   assert.equal(keys.has(index("e1") + ":" + index("g1")), true);
   assert.equal(keys.has(index("e1") + ":" + index("c1")), true);
 });
 
 test("en passant move is generated when legal", () => {
-  const engine = loadEngine();
+  const rules = loadRules();
   const position = positionFromFen("rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3");
-  const result = engine.search(position, "w", 1, 50000, 32, 15, index("d6"));
-  assert.equal(result.alternatives.some(move => move.from === index("e5") && move.to === index("d6")), true);
+  const moves = rules.legalMoves(position, "w", 15, index("d6"));
+  assert.equal(moves.some(move => move.from === index("e5") && move.to === index("d6") && move.enPassant), true);
 });
 
 test("promotion moves are generated", () => {
-  const engine = loadEngine();
+  const rules = loadRules();
   const position = positionFromFen("7k/4P3/8/8/8/8/8/4K3 w - - 0 1");
-  const result = engine.search(position, "w", 1, 50000, 32, 0, null);
-  const promotions = result.alternatives.filter(move => move.from === index("e7") && move.to === index("e8"));
-  assert.deepEqual(new Set(promotions.map(move => move.promotion)), new Set(["Q", "R", "B", "N"]));
-});
-
-test("mate in one returns the expected mate-distance score", () => {
-  const engine = loadEngine();
-  const position = positionFromFen("7k/8/5KQ1/8/8/8/8/8 w - - 0 1");
-  const result = engine.search(position, "w", 1, 50000, 8, 0, null);
-  assert.equal(result.score, 999998);
-  assert.equal(result.mate, 1);
-  assert.equal(result.pv.length, 1);
-  assert.equal(result.pv[0].from, result.from);
-  assert.equal(result.pv[0].to, result.to);
+  const promotions = rules.legalMoves(position, "w", 0, null)
+    .filter(move => move.from === index("e7") && move.to === index("e8"))
+    .map(move => move.promotion);
+  assert.deepEqual(new Set(promotions), new Set(["Q", "R", "B", "N"]));
 });
 
 test("Polyglot hash matches known positions", () => {
@@ -440,105 +350,15 @@ test("MAIN-world bridge exposes player side, turn, and FEN", () => {
   assert.equal(board.getAttribute("data-cmh-fen"), fen);
 });
 
-test("content state uses authoritative FEN side, castling, and en passant", async () => {
-  const fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq d6 0 3";
-  const engineResult = {
-    gameState: "playing",
-    from: index("e5"),
-    to: index("d6"),
-    promotion: null,
-    score: 20,
-    depth: 1,
-    nodes: 1,
-    alternatives: [{from: index("e5"), to: index("d6"), promotion: null, score: 20}]
-  };
-  const result = await loadContentHarness({
-    fen,
-    playerSide: "b",
-    turn: "b",
-    engineResult
-  });
-
-  assert.deepEqual(Array.from(result.captured.gameStateArgs[0]), positionFromFen(fen));
-  assert.equal(result.captured.gameStateArgs[1], "b");
-  assert.equal(result.captured.gameStateArgs[2], 15);
-  assert.equal(result.captured.gameStateArgs[3], index("d6"));
-  assert.equal(result.captured.type, "maiaSearch");
-  assert.equal(result.captured.maiaArgs[1], "b");
-  assert.equal(result.captured.maiaArgs[3], 15);
-  assert.equal(result.captured.maiaArgs[4], index("d6"));
-  assert.equal(result.response.playerSide, "b");
-  assert.equal(result.response.sideToMove, "b");
-  assert.equal(result.response.isPlayerTurn, true);
-  assert.equal(result.response.analysisSource, "Local engine");
-  assert.equal(result.response.analysisDepth, 1);
-  assert.equal(result.response.analysisNodes, 1);
-  assert.equal(result.response.analysisCandidates[0].loss, 0);
-  assert.equal(result.response.analysisCandidates[0].move, "e5d6");
-});
-
-test("content state distinguishes player side from side to move", async () => {
-  const fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq d6 0 3";
-  const engineResult = {
-    gameState: "playing",
-    from: index("e5"),
-    to: index("d6"),
-    promotion: null,
-    score: 20,
-    depth: 1,
-    nodes: 1,
-    alternatives: [{from: index("e5"), to: index("d6"), promotion: null, score: 20}]
-  };
-  const result = await loadContentHarness({
-    fen,
-    playerSide: "w",
-    turn: "b",
-    engineResult
-  });
-
-  assert.equal(result.response.playerSide, "w");
-  assert.equal(result.response.sideToMove, "b");
-  assert.equal(result.response.isPlayerTurn, false);
-});
-
-test("content falls back to the extension service worker when Worker is unavailable", async () => {
+test("content uses Maia directly for move recommendations and candidates", async () => {
   const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  const engineResult = {
-    gameState: "playing",
-    from: index("e2"),
-    to: index("e4"),
-    promotion: null,
-    score: 20,
-    depth: 1,
-    nodes: 1,
-    alternatives: [{from: index("e2"), to: index("e4"), promotion: null, score: 20}]
-  };
-
-  const result = await loadContentHarness({
-    fen,
-    playerSide: "w",
-    turn: "w",
-    engineResult,
-    workerAvailable: false,
-    maiaAvailable: false
-  });
-
-  assert.equal(result.captured.type, "search");
-  assert.equal(result.captured.searchArgs[1], "w");
-  assert.equal(result.response.status, "Best e2e4");
-});
-
-test("content prefers Maia when the provider is available", async () => {
-  const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  const engineResult = {
+  const maiaResult = {
     gameState: "playing",
     from: index("e2"),
     to: index("e4"),
     promotion: null,
     score: 620,
     probability: 0.62,
-    depth: 0,
-    nodes: 0,
     alternatives: [
       {from: index("e2"), to: index("e4"), promotion: null, score: 620, probability: 0.62},
       {from: index("d2"), to: index("d4"), promotion: null, score: 180, probability: 0.18}
@@ -551,99 +371,46 @@ test("content prefers Maia when the provider is available", async () => {
     fen,
     playerSide: "w",
     turn: "w",
-    engineResult
+    maiaResult
   });
 
   assert.equal(result.captured.type, "maiaSearch");
+  assert.equal(result.captured.maiaArgs[1], "w");
   assert.equal(result.response.analysisSource, "Maia 3 • Human predictor");
   assert.equal(result.response.analysisEvaluation, "62.0%");
+  assert.equal(result.response.analysisCandidates[0].move, "e2e4");
   assert.equal(result.response.analysisCandidates[0].loss, 0);
   assert.equal(result.response.analysisCandidates[0].lossUnit, "pp");
+  assert.equal(result.response.status, "Maia e2e4");
 });
 
-test("content fallback turn detection remains available without bridge state", async () => {
-  const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  const engineResult = {
-    gameState: "playing",
-    from: index("e2"),
-    to: index("e4"),
-    promotion: null,
-    score: 20,
-    depth: 1,
-    nodes: 1,
-    alternatives: [{from: index("e2"), to: index("e4"), promotion: null, score: 20}]
-  };
+test("content reports Maia checkmate state directly", async () => {
+  const fen = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 3";
   const result = await loadContentHarness({
     fen,
     playerSide: "w",
     turn: "w",
-    engineResult
+    maiaResult: {
+      gameState: "checkmate",
+      from: null,
+      to: null,
+      promotion: null,
+      score: 0,
+      alternatives: [],
+      maia: true,
+      model: "Maia 3 5M"
+    }
   });
-  assert.equal(result.captured.args[1], "w");
+
+  assert.equal(result.captured.type, "maiaSearch");
+  assert.equal(result.response.status, "Checkmate");
 });
 
-
-test("SEE values an undefended queen capture", () => {
-  const engine = loadEngine();
-  const position = positionFromFen("4k3/8/8/3q4/4P3/8/8/4K3 w - - 0 1");
-  const move = {
-    from: index("e4"),
-    to: index("d5"),
-    promotion: null,
-    castle: false,
-    enPassant: false
-  };
-  assert.equal(engine.staticExchange(position, move), 900);
-});
-
-test("engine returns a principal variation and relative candidate losses", () => {
-  const engine = loadEngine();
-  const position = positionFromFen("r1bq1rk1/ppp1bppp/2np1n2/8/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 1");
-  const result = engine.search(position, "w", 3, 120000, 6, 0, null);
-
-  assert.ok(result.pv.length >= 1);
-  assert.equal(result.pv[0].from, result.from);
-  assert.equal(result.pv[0].to, result.to);
-  assert.equal(result.alternatives[0].loss, 0);
-
-  for (let i = 1; i < result.alternatives.length; i++) {
-    assert.ok(result.alternatives[i - 1].loss <= result.alternatives[i].loss);
-  }
-});
-
-test("Phase 2 search reaches the requested depth and returns ordered alternatives", () => {
-  const engine = loadEngine();
-  const position = positionFromFen("r1bq1rk1/ppp1bppp/2np1n2/8/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 1");
-  const result = engine.search(position, "w", 5, 180000, 6, 0, null);
-  assert.equal(result.depth, 5);
-  assert.equal(result.alternatives.length, 6);
-  for (let i = 1; i < result.alternatives.length; i++) {
-    assert.ok(result.alternatives[i - 1].score >= result.alternatives[i].score);
-  }
-});
-
-test("transposition table is retained and reused between searches", () => {
-  const engine = loadEngine();
-  const position = positionFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-  const first = engine.search(position, "w", 4, 120000, 1, 15, null);
-  const firstSize = engine.table.size;
-  const second = engine.search(position, "w", 4, 120000, 1, 15, null);
-  assert.ok(firstSize > 0);
-  assert.ok(second.nodes < first.nodes);
-  assert.equal(second.from, first.from);
-  assert.equal(second.to, first.to);
-});
-
-test("mate distance remains stable through the transposition table", () => {
-  const engine = loadEngine();
-  const position = positionFromFen("7k/6Q1/5K2/8/8/8/8/8 w - - 0 1");
-  const first = engine.search(position, "w", 4, 50000, 1, 0, null);
-  const second = engine.search(position, "w", 4, 50000, 1, 0, null);
-  assert.equal(first.score, 999998);
-  assert.equal(second.score, 999998);
-  assert.equal(engine.generation, 2);
-});
-
-test("moveKey maps UCI squares to engine indices", () => {
-  assert.equal(moveKey("e2e4"), index("e2") + ":" + index("e4"));
+test("manifest keeps Maia model resources and WASM policy", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+  assert.equal(manifest.host_permissions.includes("https://raw.githubusercontent.com/*"), true);
+  assert.equal(manifest.web_accessible_resources[0].resources.includes("maia3/*"), true);
+  assert.equal(manifest.web_accessible_resources[0].resources.includes("ort.min.js"), true);
+  assert.equal(manifest.content_security_policy.extension_pages.includes("wasm-unsafe-eval"), true);
+  assert.equal(fs.existsSync(path.join(root, "engine.js")), false);
 });
