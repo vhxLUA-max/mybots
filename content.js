@@ -257,10 +257,8 @@
     const candidates = (result.alternatives?.length
       ? result.alternatives
       : [result]).slice(0, 4);
-    const humanMove = result.humanMove || (humanMode ? chooseHumanCandidate(result) : candidates[0]);
-    const moves = humanMode
-      ? [humanMove]
-      : (showAlternatives ? candidates : [candidates[0]]);
+    const humanMove = result.humanMove || (humanMode ? chooseHumanCandidate(result) : null);
+    const moves = showAlternatives ? candidates : [candidates[0]];
     const entries = moves.map((move, index) => ({
       move,
       index,
