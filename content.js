@@ -328,14 +328,10 @@
       marker.setAttribute("markerHeight", "5");
       marker.setAttribute("orient", "auto");
 
-        const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
       head.classList.add("cmh-arrow-head", "cmh-" + category);
       head.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-      const markerColor = arrowColor(
-        moves.find(move => arrowCategory(move.score, humanMode && move === humanMove) === category)?.score || 0,
-        category === "human"
-      );
-      head.style.setProperty("fill", markerColor, "important");
+      head.style.setProperty("fill", ARROW_COLORS[category], "important");
       marker.appendChild(head);
       defs.appendChild(marker);
     }
