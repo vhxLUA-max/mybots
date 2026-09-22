@@ -39,7 +39,6 @@
   let sideToMove = null;
   let bookEnabled = true;
   let bookMode = "random";
-  let engineDepth = 4;
   let busy = false;
   let scanQueuedWhileBusy = false;
   let scanTimer = null;
@@ -65,17 +64,6 @@
   function setStatus(status, detail) {
     currentStatus = status;
     currentDetail = detail || "";
-  }
-
-  function estimatedEngineRating(depth) {
-    const ratings = {
-      2: 1200,
-      3: 1500,
-      4: 1800,
-      5: 2100,
-      6: 2300
-    };
-    return ratings[depth] || 1800;
   }
 
   function buildAnalysisCandidates(result, side) {
@@ -142,10 +130,8 @@
       playerSide,
       sideToMove,
       isPlayerTurn: playerSide && sideToMove ? playerSide === sideToMove : null,
-      engineRating: lastResult?.maia ? null : estimatedEngineRating(engineDepth),
       bookEnabled,
       bookMode,
-      engineDepth,
       bookName: lastBookName,
       gameId: currentGameId,
       analysisSource: analysis.source,
@@ -1063,18 +1049,6 @@
         updatePositionState(position);
       }
 
-      let gameState;
-      try {
-        gameState = await requestEngine("gameState", {
-          position,
-          side,
-          castlingRights,
-          epSquare
-        });
-      } catch (error) {
-        setStatus("Engine unavailable", error.message);
-        return stateResponse();
-      }
       const key = getPositionKey(position, side);
 
       if (force) {
@@ -1083,23 +1057,22 @@
       }
 
       if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer") &&
-          (lastResult?.book || lastResult?.depth === engineDepth)) return stateResponse();
+          (lastResult?.book || lastResult?.maia)) return stateResponse();
 
       setStatus("Thinking...", "Checking the opening book before Maia search.");
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      if (gameState === "checkmate" || gameState === "stalemate") {
+      const bookResult = await lookupBook(position, side);
+      let result = bookResult;
+
+      if (result?.gameState === "checkmate" || result?.gameState === "stalemate") {
         clearArrows(board);
         lastResult = null;
         lastBookName = "";
         lastPositionKey = key;
-        setStatus(gameState === "checkmate" ? "Checkmate" : "Stalemate", "No legal moves remain.");
+        setStatus(result.gameState === "checkmate" ? "Checkmate" : "Stalemate", "No legal moves remain.");
         return stateResponse();
       }
-
-      const bookResult = await lookupBook(position, side);
-      const nodeLimit = ({2: 25000, 3: 50000, 4: 100000, 5: 220000, 6: 400000})[engineDepth] || 100000;
-      let result = bookResult;
 
       if (!result) {
         const maiaRatings = getMaiaRatings(side);
@@ -1114,21 +1087,9 @@
             selfElo: maiaRatings.selfElo,
             oppoElo: maiaRatings.oppoElo
           });
-        } catch {
-          try {
-            result = await requestEngine("search", {
-              position,
-              side,
-              maxDepth: engineDepth,
-              nodeLimit,
-              alternativeCount: humanMode ? 8 : 4,
-              castlingRights,
-              epSquare
-            });
-          } catch (error) {
-            setStatus("Engine unavailable", error.message);
-            return stateResponse();
-          }
+        } catch (error) {
+          setStatus("Maia unavailable", error.message);
+          return stateResponse();
         }
       }
 
@@ -1259,17 +1220,6 @@
       if (board && lastResult && !hidden) drawArrows(board, lastResult, getSideToMove());
       sendResponse(stateResponse());
       return;
-    }
-
-    if (message?.type === "setEngineDepth") {
-      const value = Number(message.value);
-      if (!Number.isInteger(value) || value < 2 || value > 6) {
-        sendResponse({ok: false, error: "Engine depth must be between 2 and 6."});
-        return;
-      }
-      engineDepth = value;
-      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
-      return true;
     }
 
     if (message?.type === "setBookEnabled") {
