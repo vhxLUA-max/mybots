@@ -1,4 +1,4 @@
-importScripts("engine.js", "book.js");
+importScripts("book.js");
 
 const BUILTIN_BOOKS = [
   {id: "builtin:titans", name: "Titans", path: "books/titans.bin", size: 1938560},
@@ -143,58 +143,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const task = message.task;
     const payload = message.payload || {};
 
-    if (task === "maiaSearch") {
-      try {
-        if (!globalThis.__CMH_MAIA__) importScripts("maia3/maia3-engine.js");
-        globalThis.__CMH_MAIA__.search(
-          payload.position,
-          payload.side,
-          payload.alternativeCount,
-          payload.castlingRights,
-          payload.epSquare,
-          payload.selfElo,
-          payload.oppoElo
-        ).then(result => {
-          sendResponse({ok: true, result});
-        }).catch(error => {
-          sendResponse({ok: false, error: error.message || "Maia engine service worker error."});
-        });
-      } catch (error) {
-        sendResponse({ok: false, error: error.message || "Maia engine service worker error."});
-      }
-      return true;
+    if (task !== "maiaSearch") {
+      sendResponse({ok: false, error: "Unknown Maia task."});
+      return;
     }
 
     try {
-      let result;
-
-      if (task === "search") {
-        result = globalThis.__CMH_ENGINE__.search(
-          payload.position,
-          payload.side,
-          payload.maxDepth,
-          payload.nodeLimit,
-          payload.alternativeCount,
-          payload.castlingRights,
-          payload.epSquare
-        );
-      } else if (task === "gameState") {
-        result = globalThis.__CMH_ENGINE__.getGameState(
-          payload.position,
-          payload.side,
-          payload.castlingRights,
-          payload.epSquare
-        );
-      } else {
-        sendResponse({ok: false, error: "Unknown engine task."});
-        return;
-      }
-
-      sendResponse({ok: true, result});
+      if (!globalThis.__CMH_MAIA__) importScripts("maia3/maia3-engine.js");
+      globalThis.__CMH_MAIA__.search(
+        payload.position,
+        payload.side,
+        payload.alternativeCount,
+        payload.castlingRights,
+        payload.epSquare,
+        payload.selfElo,
+        payload.oppoElo
+      ).then(result => {
+        sendResponse({ok: true, result});
+      }).catch(error => {
+        sendResponse({ok: false, error: error.message || "Maia engine service worker error."});
+      });
     } catch (error) {
-      sendResponse({ok: false, error: error.message || "Engine service worker error."});
+      sendResponse({ok: false, error: error.message || "Maia engine service worker error."});
     }
-    return;
+    return true;
   }
 
   if (message?.type === "clearBookCache") {
