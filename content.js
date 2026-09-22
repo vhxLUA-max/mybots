@@ -84,8 +84,11 @@
 
     return candidates.map((move, index) => ({
       move: moveName(move),
-      evaluation: result?.book ? "Book" : formatEvaluation(move.score, side, false),
+      evaluation: result?.book
+        ? "Book"
+        : formatEvaluation(move.score, side, false, Boolean(result?.maia)),
       loss: result?.book ? null : Math.max(0, move.loss ?? bestScore - move.score),
+      lossUnit: result?.maia ? "pp" : result?.book ? "book" : "cp",
       category: arrowCategory(move, bestScore, move === result?.humanMove, Boolean(result?.book))
     }));
   }
@@ -106,11 +109,17 @@
     }
 
     return {
-      source: result.book ? "Opening book" : "Local engine",
-      evaluation: result.book ? "BOOK" : formatEvaluation(result.score, sideToMove, false),
+      source: result.book
+        ? "Opening book"
+        : result.maia
+          ? "Maia 3 • Human predictor"
+          : "Local engine",
+      evaluation: result.book
+        ? "BOOK"
+        : formatEvaluation(result.score, sideToMove, false, Boolean(result.maia)),
       mate: result.mate ?? null,
-      depth: result.book ? null : result.depth,
-      nodes: result.book ? null : result.nodes,
+      depth: result.book || result.maia ? null : result.depth,
+      nodes: result.book || result.maia ? null : result.nodes,
       pv: result.book ? "" : formatPrincipalVariation(result.pv),
       bookName: result.bookName || "",
       candidates: buildAnalysisCandidates(result, sideToMove)
@@ -133,7 +142,7 @@
       playerSide,
       sideToMove,
       isPlayerTurn: playerSide && sideToMove ? playerSide === sideToMove : null,
-      engineRating: estimatedEngineRating(engineDepth),
+      engineRating: lastResult?.maia ? null : estimatedEngineRating(engineDepth),
       bookEnabled,
       bookMode,
       engineDepth,
@@ -457,8 +466,9 @@
     board.querySelector(".cmh-eval-bar")?.remove();
   }
 
-  function formatEvaluation(score, side, isBook) {
+  function formatEvaluation(score, side, isBook, isMaia = false) {
     if (isBook) return "B " + Math.round(score);
+    if (isMaia) return (Math.max(0, Math.min(1000, Number(score) || 0)) / 10).toFixed(1) + "%";
     const whiteScore = side === "w" ? score : -score;
     if (whiteScore >= 990000 || whiteScore <= -990000) {
       const mateMoves = Math.max(1, Math.ceil((1000000 - Math.abs(whiteScore)) / 2));
@@ -468,11 +478,13 @@
     return (pawns >= 0 ? "+" : "") + pawns.toFixed(2);
   }
 
-  function formatCandidateEvaluation(score, side, isBook, bestScore) {
-    const value = formatEvaluation(score, side, isBook);
+  function formatCandidateEvaluation(score, side, isBook, bestScore, isMaia = false) {
+    const value = formatEvaluation(score, side, isBook, isMaia);
     if (isBook || !Number.isFinite(bestScore) || !Number.isFinite(score)) return value;
     const loss = Math.max(0, bestScore - score);
-    return loss > 0 ? value + " (-" + (loss / 100).toFixed(2) + ")" : value;
+    return loss > 0
+      ? value + " (-" + (isMaia ? (loss / 10).toFixed(1) + "pp" : (loss / 100).toFixed(2)) + ")"
+      : value;
   }
 
   function evaluationPercent(score, side) {
@@ -481,7 +493,7 @@
   }
 
   function estimateHumanConfidence(result, side) {
-    if (result.book || playerSide !== side) return null;
+    if (result.book || result.maia || playerSide !== side) return null;
     const userScore = result.score;
     if (userScore >= 990000) return 95;
     if (userScore <= -990000) return 5;
@@ -801,7 +813,9 @@
     bar.appendChild(blackFill);
 
     if (!result.book) {
-      const whiteRatio = evaluationPercent(result.score, side);
+      const whiteRatio = result.maia
+        ? Math.max(0.02, Math.min(0.98, (Number(result.score) || 0) / 1000))
+        : evaluationPercent(result.score, side);
       const whiteFill = document.createElement("div");
       whiteFill.classList.add("cmh-eval-bar-white");
       whiteFill.style.height = (whiteRatio * 100) + "%";
@@ -813,7 +827,7 @@
 
       const score = document.createElement("span");
       score.classList.add("cmh-eval-bar-score");
-      score.textContent = formatEvaluation(result.score, side, false);
+      score.textContent = formatEvaluation(result.score, side, false, Boolean(result.maia));
       score.style.top = ((orientation.flipped ? whiteRatio : 1 - whiteRatio) * 100) + "%";
       bar.appendChild(score);
     } else {
@@ -920,7 +934,7 @@
       label.setAttribute("y", String(labelY));
       label.setAttribute("text-anchor", "middle");
       label.setAttribute("dominant-baseline", "middle");
-      label.textContent = formatCandidateEvaluation(move.score, side, result.book, bestScore);
+      label.textContent = formatCandidateEvaluation(move.score, side, result.book, bestScore, Boolean(result.maia));
       label.classList.add("cmh-eval-label", "cmh-" + category);
       label.style.setProperty("fill", color, "important");
       svg.appendChild(label);
@@ -943,6 +957,21 @@
 
   function formatPrincipalVariation(pv) {
     return (pv || []).map(moveName).join(" ");
+  }
+
+  function getMaiaRatings(side) {
+    const player = Math.max(600, Math.min(2600, Number(humanRating) || 1500));
+    const opponent = Math.max(600, Math.min(2600, Number(opponentRating) || 1500));
+
+    if (playerSide && side === playerSide) {
+      return {selfElo: player, oppoElo: opponent};
+    }
+
+    if (playerSide && side !== playerSide) {
+      return {selfElo: opponent, oppoElo: player};
+    }
+
+    return {selfElo: player, oppoElo: opponent};
   }
 
   async function lookupBook(position, side) {
@@ -1056,7 +1085,7 @@
       if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer") &&
           (lastResult?.book || lastResult?.depth === engineDepth)) return stateResponse();
 
-      setStatus("Thinking...", "Checking the opening book before engine search.");
+      setStatus("Thinking...", "Checking the opening book before Maia search.");
       await new Promise(resolve => setTimeout(resolve, 0));
 
       if (gameState === "checkmate" || gameState === "stalemate") {
@@ -1073,19 +1102,33 @@
       let result = bookResult;
 
       if (!result) {
+        const maiaRatings = getMaiaRatings(side);
+
         try {
-          result = await requestEngine("search", {
+          result = await requestEngine("maiaSearch", {
             position,
             side,
-            maxDepth: engineDepth,
-            nodeLimit,
             alternativeCount: humanMode ? 8 : 4,
             castlingRights,
-            epSquare
+            epSquare,
+            selfElo: maiaRatings.selfElo,
+            oppoElo: maiaRatings.oppoElo
           });
-        } catch (error) {
-          setStatus("Engine unavailable", error.message);
-          return stateResponse();
+        } catch {
+          try {
+            result = await requestEngine("search", {
+              position,
+              side,
+              maxDepth: engineDepth,
+              nodeLimit,
+              alternativeCount: humanMode ? 8 : 4,
+              castlingRights,
+              epSquare
+            });
+          } catch (error) {
+            setStatus("Engine unavailable", error.message);
+            return stateResponse();
+          }
         }
       }
 
@@ -1128,6 +1171,16 @@
         setStatus(
           humanMode ? "Study candidates" : "Book " + moveName(result),
           turnDetail + " • " + (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
+        );
+      } else if (result.maia) {
+        setStatus(
+          humanMode ? "Maia study candidates" : "Maia " + moveName(result),
+          turnDetail +
+            " • Maia 3 5M" +
+            " • " + (result.alternatives?.length || 1) + " candidates" +
+            (humanMode && humanRating ? " • Rating " + humanRating : "") +
+            (humanMode && opponentRating ? " • Opponent " + opponentRating : "") +
+            (humanMode && gameMode ? " • " + gameMode : "")
         );
       } else {
         const pv = formatPrincipalVariation(result.pv);
@@ -1179,10 +1232,14 @@
         setStatus(
           lastResult.book
             ? (humanMode ? "Study candidates" : "Book " + moveName(lastResult))
-            : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
+            : lastResult.maia
+              ? (humanMode ? "Maia study candidates" : "Maia " + moveName(lastResult))
+              : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
           lastResult.book
             ? (lastResult.bookName || "Opening book")
-            : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
+            : lastResult.maia
+              ? "Maia 3 5M"
+              : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
         );
       }
       sendResponse(stateResponse());
