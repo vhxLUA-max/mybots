@@ -347,6 +347,52 @@ test("content fallback turn detection remains available without bridge state", a
   assert.equal(result.captured.args[1], "w");
 });
 
+
+test("SEE values an undefended queen capture", () => {
+  const engine = loadEngine();
+  const position = positionFromFen("4k3/8/8/3q4/4P3/8/8/4K3 w - - 0 1");
+  const move = {
+    from: index("e4"),
+    to: index("d5"),
+    promotion: null,
+    castle: false,
+    enPassant: false
+  };
+  assert.equal(engine.staticExchange(position, move), 900);
+});
+
+test("Phase 2 search reaches the requested depth and returns ordered alternatives", () => {
+  const engine = loadEngine();
+  const position = positionFromFen("r1bq1rk1/ppp1bppp/2np1n2/8/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 1");
+  const result = engine.search(position, "w", 5, 180000, 6, 0, null);
+  assert.equal(result.depth, 5);
+  assert.equal(result.alternatives.length, 6);
+  for (let i = 1; i < result.alternatives.length; i++) {
+    assert.ok(result.alternatives[i - 1].score >= result.alternatives[i].score);
+  }
+});
+
+test("transposition table is retained and reused between searches", () => {
+  const engine = loadEngine();
+  const position = positionFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  const first = engine.search(position, "w", 4, 120000, 1, 15, null);
+  const firstSize = engine.table.size;
+  const second = engine.search(position, "w", 4, 120000, 1, 15, null);
+  assert.ok(firstSize > 0);
+  assert.ok(second.nodes < first.nodes);
+  assert.equal(second.from, first.from);
+  assert.equal(second.to, first.to);
+});
+
+test("mate distance remains stable through the transposition table", () => {
+  const engine = loadEngine();
+  const position = positionFromFen("7k/6Q1/5K2/8/8/8/8/8 w - - 0 1");
+  const first = engine.search(position, "w", 4, 50000, 1, 0, null);
+  const second = engine.search(position, "w", 4, 50000, 1, 0, null);
+  assert.equal(first.score, 999998);
+  assert.equal(second.score, 999998);
+});
+
 test("moveKey maps UCI squares to engine indices", () => {
   assert.equal(moveKey("e2e4"), index("e2") + ":" + index("e4"));
 });
