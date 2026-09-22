@@ -57,6 +57,17 @@
     currentDetail = detail || "";
   }
 
+  function estimatedEngineRating(depth) {
+    const ratings = {
+      2: 1200,
+      3: 1500,
+      4: 1800,
+      5: 2100,
+      6: 2300
+    };
+    return ratings[depth] || 1800;
+  }
+
   function stateResponse() {
     return {
       ok: true,
@@ -70,6 +81,7 @@
       gameMode,
       humanConfidence,
       playerSide,
+      engineRating: estimatedEngineRating(engineDepth),
       bookEnabled,
       bookMode,
       engineDepth,
