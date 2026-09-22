@@ -11,7 +11,7 @@
   <main class="cmh-popup cmh-dashboard">
     <header class="cmh-header cmh-dashboard-header">
       <div>
-        <div class="cmh-eyebrow">LOCAL CHESS ENGINE</div>
+        <div class="cmh-eyebrow">MAIA 3 CHESS ANALYSIS</div>
         <h1>Chess Move Helper</h1>
         <div class="cmh-dashboard-label">FULL DASHBOARD</div>
       </div>
@@ -49,11 +49,7 @@
               <span class="cmh-meta-label">POSITION CONFIDENCE</span>
               <span class="cmh-meta-value" id="cmh-confidence">—</span>
             </div>
-            <div class="cmh-meta-item">
-              <span class="cmh-meta-label">EST. ENGINE RATING</span>
-              <span class="cmh-meta-value" id="cmh-engine-rating">—</span>
-            </div>
-          </div>
+    </div>
         </section>
 
         <button class="cmh-scan" id="cmh-scan">Analyze Position</button>
@@ -65,17 +61,6 @@
           <div class="cmh-analysis-source" id="cmh-analysis-source">No analysis</div>
         </div>
         <div class="cmh-analysis-eval" id="cmh-analysis-eval">—</div>
-      </div>
-
-      <div class="cmh-analysis-metrics">
-        <div>
-          <span class="cmh-analysis-label">DEPTH</span>
-          <span class="cmh-analysis-value" id="cmh-analysis-depth">—</span>
-        </div>
-        <div>
-          <span class="cmh-analysis-label">NODES</span>
-          <span class="cmh-analysis-value" id="cmh-analysis-nodes">—</span>
-        </div>
       </div>
 
       <div class="cmh-analysis-pv">
@@ -126,15 +111,6 @@
             <select id="cmh-book-mode"></select>
           </div>
 
-          <div class="cmh-depth">
-            <div class="cmh-depth-header">
-              <label class="cmh-depth-label" for="cmh-depth">Engine depth</label>
-              <span class="cmh-depth-value" id="cmh-depth-value">Depth 4 • Strong</span>
-            </div>
-            <input id="cmh-depth" type="range" min="2" max="6" value="4" step="1">
-            <div class="cmh-depth-scale"><span>Quick</span><span>Normal</span><span>Strong</span><span>Very Strong</span><span>Deep</span></div>
-          </div>
-
           <div class="cmh-book-row">
             <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
             <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
@@ -159,7 +135,7 @@
         <section class="cmh-dashboard-info">
           <div class="cmh-section-title">HOW IT WORKS</div>
           <p>Open a Chess.com board in another tab, then use Analyze Position here.</p>
-          <p>Analysis stays local using the built-in engine and Polyglot opening books.</p>
+          <p>Maia 3 generates the move candidates and arrows; Polyglot books can supply opening moves.</p>
         </section>
       </aside>
     </div>
