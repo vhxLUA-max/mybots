@@ -1,5 +1,6 @@
 (() => {
-  if (window.__CMH_ENGINE__) return;
+  const engineHost = typeof window !== "undefined" ? window : globalThis;
+  if (engineHost.__CMH_ENGINE__) return;
 
   const VALUES = { P: 100, N: 320, B: 330, R: 500, Q: 900, K: 20000 };
   const PST = {
@@ -1085,5 +1086,5 @@
     }
   }
 
-  window.__CMH_ENGINE__ = new Engine();
+  engineHost.__CMH_ENGINE__ = new Engine();
 })();
