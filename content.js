@@ -8,24 +8,23 @@
     human: "rgba(240, 170, 40, 0.75)",
     mistake: "rgba(240, 120, 40, 0.7)",
     blunder: "rgba(220, 50, 50, 0.75)",
-    response: "rgba(60, 120, 220, 0.6)"
+    response: "rgba(60, 120, 220, 0.6)",
+    ok: "rgba(240, 170, 40, 0.6)"
   };
 
-  function arrowColor(cpEval, isHumanPick) {
-    if (isHumanPick) return ARROW_COLORS.human;
-    const cp = Math.abs(cpEval);
-    if (cp < 30) return ARROW_COLORS.good;
-    if (cp < 100) return ARROW_COLORS.best;
-    if (cp < 250) return ARROW_COLORS.mistake;
-    return ARROW_COLORS.blunder;
+  function arrowColor(move, bestScore, isHumanPick, isBook) {
+    const category = arrowCategory(move, bestScore, isHumanPick, isBook);
+    return ARROW_COLORS[category];
   }
 
-  function arrowCategory(cpEval, isHumanPick) {
+  function arrowCategory(move, bestScore, isHumanPick, isBook) {
     if (isHumanPick) return "human";
-    const cp = Math.abs(cpEval);
-    if (cp < 30) return "good";
-    if (cp < 100) return "best";
-    if (cp < 250) return "mistake";
+    if (isBook) return "good";
+    const loss = Math.max(0, bestScore - move.score);
+    if (loss <= 20) return "best";
+    if (loss <= 50) return "good";
+    if (loss <= 100) return "ok";
+    if (loss <= 250) return "mistake";
     return "blunder";
   }
 
@@ -37,6 +36,7 @@
   let gameMode = null;
   let humanConfidence = null;
   let playerSide = null;
+  let sideToMove = null;
   let bookEnabled = true;
   let bookMode = "random";
   let engineDepth = 4;
@@ -90,6 +90,8 @@
       gameMode,
       humanConfidence,
       playerSide,
+      sideToMove,
+      isPlayerTurn: playerSide && sideToMove ? playerSide === sideToMove : null,
       engineRating: estimatedEngineRating(engineDepth),
       bookEnabled,
       bookMode,
@@ -376,11 +378,18 @@
     if (isBook) return "B " + Math.round(score);
     const whiteScore = side === "w" ? score : -score;
     if (whiteScore >= 990000 || whiteScore <= -990000) {
-      const mateMoves = Math.max(1, Math.ceil((999999 - Math.abs(whiteScore)) / 2));
+      const mateMoves = Math.max(1, Math.ceil((1000000 - Math.abs(whiteScore)) / 2));
       return (whiteScore >= 0 ? "+" : "-") + "M" + mateMoves;
     }
     const pawns = whiteScore / 100;
     return (pawns >= 0 ? "+" : "") + pawns.toFixed(2);
+  }
+
+  function formatCandidateEvaluation(score, side, isBook, bestScore) {
+    const value = formatEvaluation(score, side, isBook);
+    if (isBook || !Number.isFinite(bestScore) || !Number.isFinite(score)) return value;
+    const loss = Math.max(0, bestScore - score);
+    return loss > 0 ? value + " (-" + (loss / 100).toFixed(2) + ")" : value;
   }
 
   function evaluationPercent(score, side) {
@@ -388,10 +397,9 @@
     return Math.max(0.02, Math.min(0.98, 0.5 + 0.5 * Math.tanh(whiteScore / 400)));
   }
 
-  function estimateHumanConfidence(result, side, board) {
-    if (result.book) return null;
-    const userSide = getOrientation(board).flipped ? "b" : "w";
-    const userScore = userSide === side ? result.score : -result.score;
+  function estimateHumanConfidence(result, side) {
+    if (result.book || playerSide !== side) return null;
+    const userScore = result.score;
     if (userScore >= 990000) return 95;
     if (userScore <= -990000) return 5;
     const ratingEdge = Math.max(-300, Math.min(300, (Number(humanRating) || 1600) - (Number(opponentRating) || 1600)));
@@ -585,7 +593,9 @@
     return classifyGameMode(document.body?.innerText);
   }
 
-  function chooseHumanCandidate(result) {
+  function chooseHumanCandidate(result, side) {
+    if (playerSide !== side) return null;
+
     const candidates = (result.alternatives?.length
       ? result.alternatives
       : [result]).slice(0, 8);
@@ -614,11 +624,12 @@
       const pool = safePool.length ? safePool : distinctPool.slice().sort((a, b) =>
         (bestScore - a.score) - (bestScore - b.score)
       ).slice(0, 1);
+      const targetLoss = Math.max(5, Math.min(maxLoss, 65 - skill * 55));
       const weighted = pool.map((move, index) => {
         const loss = Math.max(0, bestScore - move.score);
         return {
           move,
-          weight: Math.exp(-loss / lossScale) / Math.pow(index + 1, 0.55)
+          weight: Math.exp(-Math.abs(loss - targetLoss) / lossScale) / Math.pow(index + 1, 0.35)
         };
       });
       const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
@@ -647,11 +658,11 @@
     return weighted[weighted.length - 1].move;
   }
 
-  function getHumanDisplayMoves(result) {
+  function getHumanDisplayMoves(result, side) {
     const candidates = (result.alternatives?.length
       ? result.alternatives
       : [result]).slice(0, 8);
-    const humanMove = result.humanMove || chooseHumanCandidate(result);
+    const humanMove = result.humanMove || chooseHumanCandidate(result, side);
     const bestMove = candidates[0];
     const used = new Set();
     const output = [];
@@ -666,10 +677,16 @@
 
     const goodMove = candidates.find(move =>
       move !== bestMove &&
-      bestMove.score - move.score > 0 &&
-      bestMove.score - move.score <= 30
+      bestMove.score - move.score > 20 &&
+      bestMove.score - move.score <= 50
     );
     add(goodMove, "good");
+
+    const okMove = candidates.find(move => {
+      const loss = bestMove.score - move.score;
+      return move !== bestMove && move !== humanMove && loss > 50 && loss <= 100;
+    });
+    add(okMove, "ok");
 
     add(humanMove, "human");
 
@@ -730,7 +747,8 @@
     const candidates = (result.alternatives?.length
       ? result.alternatives
       : [result]).slice(0, 8);
-    const studySet = humanMode ? getHumanDisplayMoves(result) : null;
+    const bestScore = candidates[0]?.score ?? result.score;
+    const studySet = humanMode ? getHumanDisplayMoves(result, side) : null;
     const humanMove = result.humanMove || (humanMode ? studySet?.humanMove : null);
     const moves = humanMode
       ? studySet.moves.map(entry => entry.move)
@@ -746,7 +764,7 @@
         move,
         index,
         isHumanPick: false,
-        category: arrowCategory(move.score, false)
+        category: arrowCategory(move, bestScore, false, result.book)
       }));
     const drawEntries = entries.sort((a, b) => {
       if (a.index === 0) return 1;
@@ -819,7 +837,7 @@
       label.setAttribute("y", String(labelY));
       label.setAttribute("text-anchor", "middle");
       label.setAttribute("dominant-baseline", "middle");
-      label.textContent = formatEvaluation(move.score, side, result.book);
+      label.textContent = formatCandidateEvaluation(move.score, side, result.book, bestScore);
       label.classList.add("cmh-eval-label", "cmh-" + category);
       label.style.setProperty("fill", color, "important");
       svg.appendChild(label);
@@ -838,6 +856,10 @@
     return files[move.from & 7] + (Math.floor(move.from / 8) + 1) +
       files[move.to & 7] + (Math.floor(move.to / 8) + 1) +
       (move.promotion ? "=" + move.promotion : "");
+  }
+
+  function formatPrincipalVariation(pv) {
+    return (pv || []).map(moveName).join(" ");
   }
 
   async function lookupBook(position, side) {
@@ -893,6 +915,7 @@
         gameMode = null;
         humanConfidence = null;
         playerSide = null;
+        sideToMove = null;
         stateInitialized = false;
         lastObservedPosition = null;
         const existingBoard = getBoardElement();
@@ -918,6 +941,7 @@
       }
 
       const side = fenState?.side || getSideToMove();
+      sideToMove = side;
       if (fenState) {
         castlingRights = fenState.castlingRights;
         epSquare = fenState.epSquare;
@@ -1002,30 +1026,39 @@
         return stateResponse();
       }
 
-      humanConfidence = humanMode ? estimateHumanConfidence(result, side, board) : null;
+      const isPlayerTurn = playerSide === side;
+      humanConfidence = humanMode && isPlayerTurn ? estimateHumanConfidence(result, side) : null;
+      const humanMove = humanMode && isPlayerTurn ? chooseHumanCandidate(result, side) : null;
       const displayResult = humanMode
-        ? {...result, humanMove: chooseHumanCandidate(result)}
+        ? {...result, humanMove}
         : result;
       lastResult = displayResult;
       lastBookName = result.bookName || "";
       drawArrows(board, displayResult, side);
       lastPositionKey = key;
 
+      const turnDetail = playerSide
+        ? (isPlayerTurn ? "Your turn" : "Opponent turn")
+        : ("Side to move " + (side === "w" ? "White" : "Black"));
+
       if (result.book) {
         setStatus(
           humanMode ? "Study candidates" : "Book " + moveName(result),
-          (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
+          turnDetail + " • " + (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
         );
       } else {
+        const pv = formatPrincipalVariation(result.pv);
         setStatus(
           humanMode ? "Study candidates" : "Best " + moveName(result),
-          humanMode
-            ? ("Engine-assisted study mode" +
-              (humanRating ? " • Rating " + humanRating : "") +
-              (opponentRating ? " • Opponent " + opponentRating : "") +
-              (gameMode ? " • " + gameMode : "") +
-              (humanConfidence ? " • Confidence " + humanConfidence + "%" : ""))
-            : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
+          turnDetail +
+            " • Depth " + result.depth +
+            " • " + result.nodes + " nodes" +
+            " • " + (result.alternatives?.length || 1) + " candidates" +
+            (pv ? " • PV " + pv : "") +
+            (humanMode && humanRating ? " • Rating " + humanRating : "") +
+            (humanMode && opponentRating ? " • Opponent " + opponentRating : "") +
+            (humanMode && gameMode ? " • " + gameMode : "") +
+            (humanMode && humanConfidence ? " • Confidence " + humanConfidence + "%" : "")
         );
       }
 
