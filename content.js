@@ -88,8 +88,6 @@
         source: null,
         evaluation: null,
         mate: null,
-        depth: null,
-        nodes: null,
         pv: "",
         bookName: "",
         candidates: []
@@ -101,13 +99,11 @@
         ? "Opening book"
         : result.maia
           ? "Maia 3 • Human predictor"
-          : "Local engine",
+          : "Maia 3 • Human predictor",
       evaluation: result.book
         ? "BOOK"
         : formatEvaluation(result.score, sideToMove, false, Boolean(result.maia)),
       mate: result.mate ?? null,
-      depth: result.book || result.maia ? null : result.depth,
-      nodes: result.book || result.maia ? null : result.nodes,
       pv: result.book ? "" : formatPrincipalVariation(result.pv),
       bookName: result.bookName || "",
       candidates: buildAnalysisCandidates(result, sideToMove)
@@ -137,8 +133,6 @@
       analysisSource: analysis.source,
       analysisEvaluation: analysis.evaluation,
       analysisMate: analysis.mate,
-      analysisDepth: analysis.depth,
-      analysisNodes: analysis.nodes,
       analysisPV: analysis.pv,
       analysisBookName: analysis.bookName,
       analysisCandidates: analysis.candidates
@@ -980,8 +974,6 @@
         to: response.moves[0].to,
         promotion: response.moves[0].promotion,
         score: response.moves[0].score,
-        depth: 0,
-        nodes: 0,
         alternatives: response.moves,
         book: true,
         bookName: response.name,
@@ -1144,18 +1136,14 @@
             (humanMode && gameMode ? " • " + gameMode : "")
         );
       } else {
-        const pv = formatPrincipalVariation(result.pv);
         setStatus(
-          humanMode ? "Study candidates" : "Best " + moveName(result),
+          humanMode ? "Study candidates" : "Maia " + moveName(result),
           turnDetail +
-            " • Depth " + result.depth +
-            " • " + result.nodes + " nodes" +
+            " • Maia 3 5M" +
             " • " + (result.alternatives?.length || 1) + " candidates" +
-            (pv ? " • PV " + pv : "") +
             (humanMode && humanRating ? " • Rating " + humanRating : "") +
             (humanMode && opponentRating ? " • Opponent " + opponentRating : "") +
-            (humanMode && gameMode ? " • " + gameMode : "") +
-            (humanMode && humanConfidence ? " • Confidence " + humanConfidence + "%" : "")
+            (humanMode && gameMode ? " • " + gameMode : "")
         );
       }
 
@@ -1198,9 +1186,7 @@
               : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
           lastResult.book
             ? (lastResult.bookName || "Opening book")
-            : lastResult.maia
-              ? "Maia 3 5M"
-              : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
+            : "Maia 3 5M"
         );
       }
       sendResponse(stateResponse());
