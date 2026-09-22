@@ -37,5 +37,5 @@
     childList: true,
     subtree: true
   });
-  setInterval(sync, 500);
+  setInterval(sync, 1000);
 })();
