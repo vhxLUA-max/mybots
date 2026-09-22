@@ -138,6 +138,57 @@
     return pieces;
   }
 
+  function readFenState(board) {
+    const fen = board?.getAttribute("data-cmh-fen");
+    if (!fen) return null;
+
+    const fields = fen.trim().split(/\s+/);
+    if (fields.length < 4) return null;
+
+    const ranks = fields[0].split("/");
+    if (ranks.length !== 8 || !/^[wb]$/.test(fields[1])) return null;
+
+    const position = Array(64).fill(null);
+    for (let rankIndex = 0; rankIndex < 8; rankIndex++) {
+      let file = 0;
+      for (const symbol of ranks[rankIndex]) {
+        if (/[1-8]/.test(symbol)) {
+          file += Number(symbol);
+          continue;
+        }
+        if (!/[prnbqkPRNBQK]/.test(symbol) || file >= 8) return null;
+        position[(7 - rankIndex) * 8 + file] = symbol === symbol.toUpperCase()
+          ? symbol
+          : symbol;
+        file++;
+      }
+      if (file !== 8) return null;
+    }
+
+    let rights = 0;
+    if (fields[2] !== "-") {
+      if (fields[2].includes("K")) rights |= 1;
+      if (fields[2].includes("Q")) rights |= 2;
+      if (fields[2].includes("k")) rights |= 4;
+      if (fields[2].includes("q")) rights |= 8;
+    }
+
+    let ep = null;
+    if (fields[3] !== "-" && /^[a-h][1-8]$/.test(fields[3])) {
+      ep = squareIndex({
+        file: fields[3].charCodeAt(0) - 97,
+        rank: Number(fields[3][1])
+      });
+    }
+
+    return {
+      position,
+      side: fields[1],
+      castlingRights: rights,
+      epSquare: ep
+    };
+  }
+
   function getCastlingRights(position) {
     let rights = 0;
     if (position[4] === "K" && position[7] === "R") rights |= 1;
@@ -203,6 +254,10 @@
   }
 
   function getSideToMove() {
+    const board = getBoardElement();
+    const bridgedTurn = board?.getAttribute("data-cmh-turn");
+    if (bridgedTurn === "w" || bridgedTurn === "b") return bridgedTurn;
+
     const activeClock = document.querySelector(".clock-component.clock-player-turn");
     if (activeClock?.classList.contains("clock-white")) return "w";
     if (activeClock?.classList.contains("clock-black")) return "b";
@@ -757,7 +812,8 @@
       const detectedGameMode = readGameMode();
       if (detectedGameMode) gameMode = detectedGameMode;
 
-      const position = readPosition(board);
+      const fenState = readFenState(board);
+      const position = fenState?.position || readPosition(board);
       const pieceCount = position.filter(Boolean).length;
       if (!pieceCount) {
         clearArrows(board);
@@ -765,8 +821,15 @@
         return stateResponse();
       }
 
-      const side = getSideToMove();
-      updatePositionState(position);
+      const side = fenState?.side || getSideToMove();
+      if (fenState) {
+        castlingRights = fenState.castlingRights;
+        epSquare = fenState.epSquare;
+        stateInitialized = true;
+        lastObservedPosition = position.slice();
+      } else {
+        updatePositionState(position);
+      }
       const gameState = engine.getGameState(position, side, castlingRights, epSquare);
       const key = getPositionKey(position, side);
 
