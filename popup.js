@@ -13,6 +13,7 @@
   const humanModeButton = document.querySelector("#cmh-human-mode");
   const bookEnabledButton = document.querySelector("#cmh-book-enabled");
   const bookModeSelect = document.querySelector("#cmh-book-mode");
+  const engineModeSelect = document.querySelector("#cmh-engine-mode");
   const bookStatusEl = document.querySelector("#cmh-book-status");
   const bookFileInput = document.querySelector("#cmh-book-file");
   const bookClearButton = document.querySelector("#cmh-book-clear");
@@ -224,6 +225,7 @@
     setStatus(response.status, response.detail, true);
     setGameInfo(response);
     bookModeSelect.value = response.bookMode || "random";
+    engineModeSelect.value = response.engineMode || "maia";
   }
 
   async function connect() {
@@ -293,6 +295,22 @@
       if (!response?.ok) throw new Error(response?.error || "Update failed.");
       setToggle(alternativesButton, response.showAlternatives);
       setStatus(response.status, response.detail, true);
+    } catch {
+      setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
+    }
+  });
+
+  engineModeSelect.addEventListener("change", async () => {
+    if (tabId === null) return;
+    try {
+      const response = await sendMessage({
+        type: "setEngineMode",
+        value: engineModeSelect.value
+      });
+      if (!response?.ok) throw new Error(response?.error || "Engine selection failed.");
+      engineModeSelect.value = response.engineMode || "maia";
+      setStatus(response.status, response.detail, true);
+      setGameInfo(response);
     } catch {
       setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
     }

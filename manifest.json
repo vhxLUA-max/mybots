@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chess Move Helper",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Scans Chess.com boards and uses Maia 3 as the move predictor with optional randomized Polyglot opening books.",
   "action": {
     "default_title": "Chess Move Helper",
@@ -42,6 +42,8 @@
     {
       "resources": [
         "engine-worker.js",
+        "stockfish-worker.js",
+        "stockfish/*",
         "maia3/*",
         "ort.min.js"
       ],

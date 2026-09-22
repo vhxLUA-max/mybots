@@ -39,6 +39,7 @@
   let sideToMove = null;
   let bookEnabled = true;
   let bookMode = "random";
+  let engineMode = "maia";
   let busy = false;
   let scanQueuedWhileBusy = false;
   let scanTimer = null;
@@ -97,8 +98,8 @@
     return {
       source: result.book
         ? "Opening book"
-        : result.maia
-          ? "Maia 3 • Human predictor"
+        : result.stockfish
+          ? "Stockfish 19 Lite"
           : "Maia 3 • Human predictor",
       evaluation: result.book
         ? "BOOK"
@@ -128,6 +129,7 @@
       isPlayerTurn: playerSide && sideToMove ? playerSide === sideToMove : null,
       bookEnabled,
       bookMode,
+      engineMode,
       bookName: lastBookName,
       gameId: currentGameId,
       analysisSource: analysis.source,
@@ -198,6 +200,107 @@
         reject(error);
       }
     });
+  }
+
+  let stockfishWorker = null;
+  let stockfishWorkerFailed = false;
+  let stockfishWorkerRequestId = 0;
+  const stockfishWorkerPending = new Map();
+
+  function getStockfishWorker() {
+    if (stockfishWorker || stockfishWorkerFailed) return stockfishWorker;
+
+    try {
+      stockfishWorker = new Worker(chrome.runtime.getURL("stockfish-worker.js"));
+      stockfishWorker.onmessage = event => {
+        const {taskId, ok, result, error} = event.data || {};
+        const pending = stockfishWorkerPending.get(taskId);
+        if (!pending) return;
+        stockfishWorkerPending.delete(taskId);
+        if (ok) pending.resolve(result);
+        else pending.reject(new Error(error || "Stockfish worker error."));
+      };
+      stockfishWorker.onerror = error => {
+        for (const pending of stockfishWorkerPending.values()) {
+          pending.reject(new Error(error.message || "Stockfish worker stopped."));
+        }
+        stockfishWorkerPending.clear();
+        stockfishWorker.terminate();
+        stockfishWorker = null;
+        stockfishWorkerFailed = true;
+      };
+      return stockfishWorker;
+    } catch {
+      stockfishWorker = null;
+      stockfishWorkerFailed = true;
+      return null;
+    }
+  }
+
+  function requestStockfish(fen, depth = 16, alternativeCount = 4) {
+    const worker = getStockfishWorker();
+    if (!worker) return Promise.reject(new Error("Stockfish worker is unavailable."));
+
+    return new Promise((resolve, reject) => {
+      const taskId = ++stockfishWorkerRequestId;
+      stockfishWorkerPending.set(taskId, {resolve, reject});
+
+      try {
+        worker.postMessage({
+          type: "stockfishSearch",
+          taskId,
+          fen,
+          depth,
+          multiPV: alternativeCount
+        });
+      } catch (error) {
+        stockfishWorkerPending.delete(taskId);
+        reject(error);
+      }
+    });
+  }
+
+  function positionToFen(position, side, rights, ep) {
+    const ranks = [];
+
+    for (let rank = 8; rank >= 1; rank--) {
+      let empty = 0;
+      let row = "";
+
+      for (let file = 0; file < 8; file++) {
+        const piece = position[(rank - 1) * 8 + file];
+        if (!piece) {
+          empty++;
+          continue;
+        }
+        if (empty) {
+          row += empty;
+          empty = 0;
+        }
+        row += piece;
+      }
+
+      if (empty) row += empty;
+      ranks.push(row);
+    }
+
+    const castling =
+      (rights & 1 ? "K" : "") +
+      (rights & 2 ? "Q" : "") +
+      (rights & 4 ? "k" : "") +
+      (rights & 8 ? "q" : "");
+
+    let epSquare = "-";
+    if (Number.isInteger(ep)) {
+      const files = "abcdefgh";
+      epSquare = files[ep & 7] + (Math.floor(ep / 8) + 1);
+    }
+
+    return ranks.join("/") + " " + side + " " + (castling || "-") + " " + epSquare + " 0 1";
+  }
+
+  function isLiveGamePage() {
+    return /^\/(?:game\/live|live\/game)\//.test(location.pathname);
   }
 
   function requestEngine(type, payload) {
@@ -1043,6 +1146,15 @@
 
       const key = getPositionKey(position, side);
 
+      if (engineMode === "stockfish" && isLiveGamePage()) {
+        clearArrows(board);
+        lastResult = null;
+        lastBookName = "";
+        lastPositionKey = key;
+        setStatus("Stockfish disabled for Live Chess", "Use the Analysis board or a supported bot game.");
+        return stateResponse();
+      }
+
       if (force) {
         lastPositionKey = "";
         lastBookName = "";
@@ -1058,18 +1170,23 @@
       let result = bookResult;
 
       if (!result) {
-        const maiaRatings = getMaiaRatings(side);
-
         try {
-          result = await requestEngine("maiaSearch", {
-            position,
-            side,
-            alternativeCount: humanMode ? 8 : 4,
-            castlingRights,
-            epSquare,
-            selfElo: maiaRatings.selfElo,
-            oppoElo: maiaRatings.oppoElo
-          });
+          if (engineMode === "stockfish") {
+            const fen = board.getAttribute("data-cmh-fen") ||
+              positionToFen(position, side, castlingRights, epSquare);
+            result = await requestStockfish(fen, 16, humanMode ? 8 : 4);
+          } else {
+            const maiaRatings = getMaiaRatings(side);
+            result = await requestEngine("maiaSearch", {
+              position,
+              side,
+              alternativeCount: humanMode ? 8 : 4,
+              castlingRights,
+              epSquare,
+              selfElo: maiaRatings.selfElo,
+              oppoElo: maiaRatings.oppoElo
+            });
+          }
         } catch (error) {
           setStatus("Maia unavailable", error.message);
           return stateResponse();
@@ -1085,12 +1202,15 @@
         return stateResponse();
       }
 
-      if (result.gameState === "checkmate" || result.gameState === "stalemate") {
+      if (result.gameState === "checkmate" || result.gameState === "stalemate" || result.gameState === "no-move") {
         clearArrows(board);
         lastResult = null;
         lastBookName = "";
         lastPositionKey = key;
-        setStatus(result.gameState === "checkmate" ? "Checkmate" : "Stalemate", "No legal moves remain.");
+        setStatus(
+          result.gameState === "checkmate" ? "Checkmate" : result.gameState === "stalemate" ? "Stalemate" : "No legal move",
+          "No legal moves remain."
+        );
         return stateResponse();
       }
 
@@ -1124,6 +1244,14 @@
         setStatus(
           humanMode ? "Study candidates" : "Book " + moveName(result),
           turnDetail + " • " + (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
+        );
+      } else if (result.stockfish) {
+        setStatus(
+          humanMode ? "Stockfish study candidates" : "Stockfish " + moveName(result),
+          turnDetail +
+            " • Stockfish 19 Lite" +
+            " • depth " + (result.depth || 0) +
+            " • " + (result.alternatives?.length || 1) + " candidates"
         );
       } else if (result.maia) {
         setStatus(
@@ -1181,12 +1309,16 @@
         setStatus(
           lastResult.book
             ? (humanMode ? "Study candidates" : "Book " + moveName(lastResult))
-            : lastResult.maia
-              ? (humanMode ? "Maia study candidates" : "Maia " + moveName(lastResult))
-              : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
+            : lastResult.stockfish
+              ? (humanMode ? "Stockfish study candidates" : "Stockfish " + moveName(lastResult))
+              : lastResult.maia
+                ? (humanMode ? "Maia study candidates" : "Maia " + moveName(lastResult))
+                : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
           lastResult.book
             ? (lastResult.bookName || "Opening book")
-            : "Maia 3 5M"
+            : lastResult.stockfish
+              ? "Stockfish 19 Lite"
+              : "Maia 3 5M"
         );
       }
       sendResponse(stateResponse());
@@ -1206,6 +1338,18 @@
       if (board && lastResult && !hidden) drawArrows(board, lastResult, getSideToMove());
       sendResponse(stateResponse());
       return;
+    }
+
+    if (message?.type === "setEngineMode") {
+      const nextEngineMode = message.value === "stockfish" ? "stockfish" : "maia";
+      if (nextEngineMode !== engineMode) {
+        engineMode = nextEngineMode;
+        lastPositionKey = "";
+        lastResult = null;
+        lastBookName = "";
+      }
+      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
+      return true;
     }
 
     if (message?.type === "setBookEnabled") {
