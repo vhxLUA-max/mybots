@@ -282,6 +282,17 @@
   }
 
   function readPlayerSide() {
+    const board = getBoardElement();
+    const game = board?.game;
+
+    if (game && typeof game.getPlayingAs === "function") {
+      try {
+        const value = game.getPlayingAs();
+        if (value === 1 || value === "1" || value === "w" || value === "white") return "w";
+        if (value === 2 || value === "2" || value === "b" || value === "black") return "b";
+      } catch {}
+    }
+
     const zones = [
       {
         selectors: [
@@ -289,8 +300,7 @@
           ".board-layout-player-bottom",
           ".player-component.player-bottom",
           ".player-bottom"
-        ],
-        position: "bottom"
+        ]
       },
       {
         selectors: [
@@ -298,8 +308,7 @@
           ".board-layout-player-top",
           ".player-component.player-top",
           ".player-top"
-        ],
-        position: "top"
+        ]
       }
     ];
 
@@ -312,15 +321,16 @@
         element.className
       ];
 
-      for (const ratingElement of element.querySelectorAll("[class*='rating']")) {
-        parts.push(ratingElement.className);
-        parts.push(ratingElement.getAttribute("data-color"));
-        parts.push(ratingElement.getAttribute("data-player-color"));
+      for (const child of element.querySelectorAll("[data-color], [data-player-color], [color], [class*='rating']")) {
+        parts.push(child.getAttribute("data-color"));
+        parts.push(child.getAttribute("data-player-color"));
+        parts.push(child.getAttribute("color"));
+        parts.push(child.className);
       }
 
       const raw = parts.filter(Boolean).join(" ").toLowerCase();
-      if (/\bcc-user-rating-white\b|\bcolor-white\b|\bwhite-player\b/.test(raw)) return "w";
-      if (/\bcc-user-rating-black\b|\bcolor-black\b|\bblack-player\b/.test(raw)) return "b";
+      if (/\bcc-user-rating-white\b|\bcolor-white\b|\bwhite-player\b|\bwhite\b/.test(raw)) return "w";
+      if (/\bcc-user-rating-black\b|\bcolor-black\b|\bblack-player\b|\bblack\b/.test(raw)) return "b";
       return null;
     };
 
