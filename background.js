@@ -6,6 +6,9 @@ const BUILTIN_BOOKS = [
 ];
 
 let cachedBooks = new Map();
+let cachedBookSources = null;
+let bookLookupCache = new Map();
+const BOOK_LOOKUP_CACHE_MAX = 512;
 let lastRandomBookId = "";
 
 function openDb() {
@@ -64,6 +67,8 @@ async function getBookSource(sourceId) {
 }
 
 async function getBookSources() {
+  if (cachedBookSources) return cachedBookSources;
+
   const sources = BUILTIN_BOOKS.map(book => ({
     id: book.id,
     name: book.name,
@@ -81,7 +86,37 @@ async function getBookSources() {
     });
   }
 
-  return sources;
+  cachedBookSources = sources;
+  return cachedBookSources;
+}
+
+function clearBookCaches() {
+  cachedBooks.clear();
+  cachedBookSources = null;
+  bookLookupCache.clear();
+}
+
+function bookLookupCacheKey(sourceId, position, side, castlingRights, epFile) {
+  const hash = CMH_BOOK.hash(position, side, castlingRights, epFile)
+    .toString(16)
+    .padStart(16, "0");
+  return sourceId + "|" + hash + "|" + castlingRights + "|" + (epFile ?? -1) + "|" + side;
+}
+
+function getCachedBookMoves(key) {
+  const entry = bookLookupCache.get(key);
+  if (!entry) return null;
+  bookLookupCache.delete(key);
+  bookLookupCache.set(key, entry);
+  return entry.map(move => ({...move}));
+}
+
+function cacheBookMoves(key, moves) {
+  bookLookupCache.delete(key);
+  bookLookupCache.set(key, moves.map(move => ({...move})));
+  while (bookLookupCache.size > BOOK_LOOKUP_CACHE_MAX) {
+    bookLookupCache.delete(bookLookupCache.keys().next().value);
+  }
 }
 
 function chooseRandomBookOrder(sources) {
@@ -105,7 +140,7 @@ function chooseRandomBookOrder(sources) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "clearBookCache") {
-    cachedBooks.delete("custom");
+    clearBookCaches();
     sendResponse({ok: true});
     return;
   }
@@ -132,7 +167,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         transaction.onerror = () => reject(transaction.error || new Error("Book delete error"));
       }))
       .then(() => {
-        cachedBooks.delete("custom");
+        clearBookCaches();
         sendResponse({ok: true, loaded: false, name: "", size: 0});
       })
       .catch(error => sendResponse({ok: false, error: error.message}));
@@ -156,14 +191,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const book = await getBookSource(source.id);
             if (!book) continue;
 
-            const moves = CMH_BOOK.lookup(
+            const castlingRights = message.castlingRights || 0;
+            const epFile = message.epFile ?? null;
+            const cacheKey = bookLookupCacheKey(
+              source.id,
+              message.position,
+              message.side,
+              castlingRights,
+              epFile
+            );
+            const cachedMoves = getCachedBookMoves(cacheKey);
+            const moves = cachedMoves || CMH_BOOK.lookup(
               book.buffer,
               message.position,
               message.side,
-              message.castlingRights || 0,
-              message.epFile ?? null,
+              castlingRights,
+              epFile,
               8
             );
+
+            cacheBookMoves(cacheKey, moves);
 
             if (moves.length) {
               sendResponse({
