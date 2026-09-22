@@ -1,22 +1,24 @@
+const ext = globalThis.browser ?? globalThis.chrome;
+
 importScripts("offscreen.js");
 
 const OFFSCREEN_DOCUMENT_PATH="offscreen.html";
-const HAS_OFFSCREEN_API=Boolean(chrome.offscreen?.createDocument);
+const HAS_OFFSCREEN_API=Boolean(ext.offscreen?.createDocument);
 
 let creatingOffscreenDocument=null;
 
 async function ensureOffscreenDocument(){
   if(!HAS_OFFSCREEN_API)return;
 
-  const offscreenUrl=chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+  const offscreenUrl=ext.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 
-  if("getContexts" in chrome.runtime){
-    const contexts=await chrome.runtime.getContexts({
+  if("getContexts" in ext.runtime){
+    const contexts=await ext.runtime.getContexts({
       contextTypes:["OFFSCREEN_DOCUMENT"],
       documentUrls:[offscreenUrl]
     });
     if(contexts.length)return;
-  }else if(await chrome.offscreen.hasDocument?.()){
+  }else if(await ext.offscreen.hasDocument?.()){
     return;
   }
 
@@ -25,7 +27,7 @@ async function ensureOffscreenDocument(){
     return;
   }
 
-  creatingOffscreenDocument=chrome.offscreen.createDocument({
+  creatingOffscreenDocument=ext.offscreen.createDocument({
     url:OFFSCREEN_DOCUMENT_PATH,
     reasons:["WORKERS"],
     justification:"Run the bundled Stockfish worker in an extension-origin document."
@@ -38,7 +40,7 @@ async function ensureOffscreenDocument(){
   }
 }
 
-chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+ext.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.target==="offscreen")return;
   if(message?.type!=="stockfishSearch")return;
 
@@ -51,7 +53,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 
     await ensureOffscreenDocument();
 
-    const response=await chrome.runtime.sendMessage({
+    const response=await ext.runtime.sendMessage({
       target:"offscreen",
       type:"stockfishSearch",
       fen:message.fen,
