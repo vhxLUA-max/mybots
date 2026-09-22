@@ -45,7 +45,7 @@ Browser compatibility should be tested on the target browser before distribution
 7. Open a Chess.com board.
 8. Open the extension and use **Analyze Position**.
 
-Chrome officially supports installing extensions on computers; extensions cannot be installed as normal browser extensions in Chrome on mobile devices. citeturn160471search5turn160471search6
+Chrome's official extension documentation covers desktop installation, and Chrome does not support installing extensions directly on mobile devices. See the [Chrome extension installation guide](https://support.google.com/chrome/answer/2664769) and [Chrome Web Store troubleshooting](https://support.google.com/chrome_webstore/answer/1698338).
 
 ### Microsoft Edge
 
@@ -56,7 +56,7 @@ Chrome officially supports installing extensions on computers; extensions cannot
 5. Select the repository folder.
 6. Open a Chess.com board and use the extension.
 
-Edge supports Chromium-compatible extensions, including extensions obtained from the Chrome Web Store when the required option is enabled. citeturn160471search7turn160471search12
+Edge supports Chromium-compatible extensions and can install compatible extensions from the Chrome Web Store when extensions from other stores are allowed. See [Microsoft's Edge extension guide](https://support.microsoft.com/en-us/edge/add-turn-off-or-remove-extensions-in-microsoft-edge).
 
 ### Brave, Opera, and other Chromium browsers
 
@@ -74,7 +74,7 @@ Mobile extension support depends on the browser.
 
 ### Android: Firefox
 
-Firefox for Android supports extensions/add-ons through its Add-ons Manager and the Firefox Add-ons website. citeturn160471search0turn160471search3
+Firefox for Android supports extensions/add-ons through its Add-ons Manager and the Firefox Add-ons website. See [Mozilla's Firefox for Android extension guide](https://support.mozilla.org/en-US/kb/find-and-install-add-ons-firefox-android).
 
 For a published Firefox-compatible version:
 
@@ -135,7 +135,7 @@ To load a custom opening book, use a valid Polyglot `.bin` file from the popup o
 
 This project is a browser extension that interacts with Chess.com pages. Chess.com can change its page structure or behavior, which may affect compatibility.
 
-Support for a specific browser is determined by that browser's extension API and manifest compatibility. Chromium-based browsers generally share the same extension APIs, but browser-specific differences can still require adjustments. citeturn160471search11
+Support for a specific browser is determined by that browser's extension API and manifest compatibility. Chromium-based browsers generally share the same extension APIs, but browser-specific differences can still require adjustments. See [Microsoft's browser compatibility documentation](https://learn.microsoft.com/en-us/microsoft-edge/extensions/).
 
 Opening-book files may have licensing terms separate from the project source code. Check the terms of any bundled or custom book files before redistributing them.
 
