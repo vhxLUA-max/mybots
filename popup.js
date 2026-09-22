@@ -20,6 +20,13 @@
   const depthInput = document.querySelector("#cmh-depth");
   const depthValue = document.querySelector("#cmh-depth-value");
   const dashboardOpenButton = document.querySelector("#cmh-dashboard-open");
+  const analysisSourceEl = document.querySelector("#cmh-analysis-source");
+  const analysisEvalEl = document.querySelector("#cmh-analysis-eval");
+  const analysisDepthEl = document.querySelector("#cmh-analysis-depth");
+  const analysisNodesEl = document.querySelector("#cmh-analysis-nodes");
+  const analysisPvEl = document.querySelector("#cmh-analysis-pv");
+  const analysisBookEl = document.querySelector("#cmh-analysis-book");
+  const candidateListEl = document.querySelector("#cmh-candidate-list");
 
   let tabId = null;
 
@@ -63,11 +70,69 @@
     engineRatingEl.textContent = response.engineRating
       ? "≈" + Number(response.engineRating).toLocaleString()
       : "—";
+    setAnalysis(response);
   }
 
   function formatBookSize(size) {
     if (size < 1024 * 1024) return Math.max(1, Math.round(size / 1024)) + " KB";
     return (size / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function candidateLabel(category) {
+    const labels = {
+      best: "Best",
+      good: "Good",
+      ok: "Okay",
+      human: "Human",
+      mistake: "Mistake",
+      blunder: "Blunder"
+    };
+    return labels[category] || category || "Candidate";
+  }
+
+  function setAnalysis(response) {
+    if (!analysisSourceEl) return;
+
+    const source = response.analysisSource;
+    analysisSourceEl.textContent = source || "No analysis";
+    analysisSourceEl.className = "cmh-analysis-source" + (source === "Opening book" ? " cmh-book-source" : source ? " cmh-engine-source" : "");
+    analysisEvalEl.textContent = response.analysisEvaluation || "—";
+    analysisDepthEl.textContent = response.analysisDepth ? "D" + response.analysisDepth : "—";
+    analysisNodesEl.textContent = response.analysisNodes
+      ? Number(response.analysisNodes).toLocaleString()
+      : "—";
+    analysisPvEl.textContent = response.analysisPV || "—";
+    analysisBookEl.textContent = response.analysisBookName || "";
+
+    candidateListEl.replaceChildren();
+    for (const candidate of response.analysisCandidates || []) {
+      const row = document.createElement("div");
+      row.className = "cmh-candidate-row";
+
+      const move = document.createElement("span");
+      move.className = "cmh-candidate-move";
+      move.textContent = candidate.move;
+
+      const category = document.createElement("span");
+      category.className = "cmh-candidate-category cmh-" + candidate.category;
+      category.textContent = candidateLabel(candidate.category);
+
+      const evaluation = document.createElement("span");
+      evaluation.className = "cmh-candidate-eval";
+      evaluation.textContent = candidate.evaluation;
+
+      const loss = document.createElement("span");
+      loss.className = "cmh-candidate-loss";
+      loss.textContent = candidate.loss === null ? "Book" : candidate.loss > 0
+        ? "-" + (candidate.loss / 100).toFixed(2)
+        : "Best";
+
+      row.appendChild(move);
+      row.appendChild(category);
+      row.appendChild(evaluation);
+      row.appendChild(loss);
+      candidateListEl.appendChild(row);
+    }
   }
 
   async function getActiveTab() {
