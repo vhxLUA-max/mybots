@@ -1,3 +1,5 @@
+const ext = globalThis.browser ?? globalThis.chrome;
+
 (() => {
   if (window.__chessMoveHelperLoaded) return;
   window.__chessMoveHelperLoaded = true;
@@ -113,7 +115,7 @@
   
 
   async function requestStockfish(fen,depth=16,alternativeCount=4){
-    const response=await chrome.runtime.sendMessage({
+    const response=await ext.runtime.sendMessage({
       type:"stockfishSearch",
       fen,
       depth,
@@ -855,7 +857,7 @@
     }
   }
 
-  chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+  ext.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     if(message?.type==="getState"){
       sendResponse(stateResponse());
       return;
