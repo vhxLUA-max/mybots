@@ -459,12 +459,10 @@ test("content state uses authoritative FEN side, castling, and en passant", asyn
     engineResult
   });
 
-  assert.deepEqual(result.captured.gameStateArgs.slice(0, 4), [
-    positionFromFen(fen),
-    "b",
-    15,
-    index("d6")
-  ]);
+  assert.deepEqual(Array.from(result.captured.gameStateArgs[0]), positionFromFen(fen));
+  assert.equal(result.captured.gameStateArgs[1], "b");
+  assert.equal(result.captured.gameStateArgs[2], 15);
+  assert.equal(result.captured.gameStateArgs[3], index("d6"));
   assert.equal(result.captured.type, "maiaSearch");
   assert.equal(result.captured.maiaArgs[1], "b");
   assert.equal(result.captured.maiaArgs[3], 15);
