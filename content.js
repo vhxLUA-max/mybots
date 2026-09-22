@@ -181,14 +181,39 @@
     }
   }
 
-  function requestEngine(type, payload) {
+  function requestEngineInBackground(type, payload) {
     return new Promise((resolve, reject) => {
-      const worker = getEngineWorker();
-      if (!worker) {
-        reject(new Error("Engine worker is unavailable."));
-        return;
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: "engineTask",
+            task: type,
+            payload
+          },
+          response => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            if (!response?.ok) {
+              reject(new Error(response?.error || "Engine service unavailable."));
+              return;
+            }
+            resolve(response.result);
+          }
+        );
+      } catch (error) {
+        reject(error);
       }
+    });
+  }
 
+  function requestEngine(type, payload) {
+    const worker = getEngineWorker();
+
+    if (!worker) return requestEngineInBackground(type, payload);
+
+    return new Promise((resolve, reject) => {
       const taskId = ++engineWorkerRequestId;
       engineWorkerPending.set(taskId, {resolve, reject});
 
@@ -196,8 +221,14 @@
         worker.postMessage({type, taskId, ...payload});
       } catch (error) {
         engineWorkerPending.delete(taskId);
-        reject(error);
+        engineWorker = null;
+        requestEngineInBackground(type, payload).then(resolve, reject);
       }
+    }).catch(error => {
+      engineWorker = null;
+      return requestEngineInBackground(type, payload).catch(fallbackError => {
+        throw new Error(error.message + " | " + fallbackError.message);
+      });
     });
   }
 
