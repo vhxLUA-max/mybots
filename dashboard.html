@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chess Move Helper Dashboard</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body data-cmh-page="dashboard">
+  <main class="cmh-popup cmh-dashboard">
+    <header class="cmh-header cmh-dashboard-header">
+      <div>
+        <div class="cmh-eyebrow">LOCAL CHESS ENGINE</div>
+        <h1>Chess Move Helper</h1>
+        <div class="cmh-dashboard-label">FULL DASHBOARD</div>
+      </div>
+      <div class="cmh-dot" id="cmh-dot"></div>
+    </header>
+
+    <div class="cmh-dashboard-grid">
+      <section class="cmh-dashboard-main">
+        <section class="cmh-status-card">
+          <div class="cmh-status-label">STATUS</div>
+          <div class="cmh-status" id="cmh-status">Connecting...</div>
+          <div class="cmh-detail" id="cmh-detail">Open a Chess.com board to begin.</div>
+        </section>
+
+        <button class="cmh-scan" id="cmh-scan">Analyze Position</button>
+
+        <section class="cmh-options">
+          <div class="cmh-option">
+            <div>
+              <div class="cmh-option-title">Alternative arrows</div>
+              <div class="cmh-option-subtitle">Show good, okay, and bad candidates</div>
+            </div>
+            <button class="cmh-toggle cmh-on" id="cmh-alternatives" aria-pressed="true">
+              <span></span>
+            </button>
+          </div>
+
+          <div class="cmh-option">
+            <div>
+              <div class="cmh-option-title">Opening book</div>
+              <div class="cmh-option-subtitle" id="cmh-book-status">Loading built-in books...</div>
+            </div>
+            <button class="cmh-toggle cmh-on" id="cmh-book-enabled" aria-pressed="true">
+              <span></span>
+            </button>
+          </div>
+
+          <div class="cmh-book-mode">
+            <label class="cmh-book-mode-label" for="cmh-book-mode">Book selection</label>
+            <select id="cmh-book-mode"></select>
+          </div>
+
+          <div class="cmh-depth">
+            <div class="cmh-depth-header">
+              <label class="cmh-depth-label" for="cmh-depth">Engine depth</label>
+              <span class="cmh-depth-value" id="cmh-depth-value">Depth 4 • Strong</span>
+            </div>
+            <input id="cmh-depth" type="range" min="2" max="6" value="4" step="1">
+            <div class="cmh-depth-scale"><span>Quick</span><span>Normal</span><span>Strong</span><span>Very Strong</span><span>Deep</span></div>
+          </div>
+
+          <div class="cmh-book-row">
+            <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
+            <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
+            <button class="cmh-book-clear" id="cmh-book-clear">Clear</button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="cmh-dashboard-side">
+        <section class="cmh-legend">
+          <div class="cmh-section-title">MOVE TYPES</div>
+          <div class="cmh-legend-grid">
+            <div><span class="cmh-swatch cmh-best"></span>Best</div>
+            <div><span class="cmh-swatch cmh-good"></span>Good</div>
+            <div><span class="cmh-swatch cmh-ok"></span>Okay</div>
+            <div><span class="cmh-swatch cmh-bad"></span>Bad</div>
+          </div>
+        </section>
+
+        <section class="cmh-dashboard-info">
+          <div class="cmh-section-title">HOW IT WORKS</div>
+          <p>Open a Chess.com board in another tab, then use Analyze Position here.</p>
+          <p>Analysis stays local using the built-in engine and Polyglot opening books.</p>
+        </section>
+      </aside>
+    </div>
+
+    <footer class="cmh-footer">Popup remains available from the extension toolbar • Full dashboard</footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
