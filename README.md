@@ -89,7 +89,7 @@ The current GitHub repository is an unpacked desktop extension package. A Firefo
 
 ### Android: Chrome
 
-Chrome for Android does not support installing extensions directly. Google documents extension installation as a desktop feature, while Chrome's mobile help states that extensions and themes cannot be installed on mobile devices. citeturn160471search5turn160471search6
+Chrome for Android does not support installing extensions directly. See the [Chrome extension installation guide](https://support.google.com/chrome/answer/2664769) and [Chrome Web Store troubleshooting](https://support.google.com/chrome_webstore/answer/1698338).
 
 ### iPhone / iPad
 
