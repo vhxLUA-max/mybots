@@ -46,6 +46,7 @@
   let observedBoard = null;
   let boardObserver = null;
   let engineWorker = null;
+  let engineWorkerFailed = false;
   let engineWorkerRequestId = 0;
   const engineWorkerPending = new Map();
   let lastMetadataRefreshAt = 0;
@@ -154,7 +155,7 @@
   }
 
   function getEngineWorker() {
-    if (engineWorker) return engineWorker;
+    if (engineWorker || engineWorkerFailed) return engineWorker;
 
     try {
       engineWorker = new Worker(chrome.runtime.getURL("engine-worker.js"));
@@ -173,10 +174,12 @@
         engineWorkerPending.clear();
         engineWorker.terminate();
         engineWorker = null;
+        engineWorkerFailed = true;
       };
       return engineWorker;
     } catch {
       engineWorker = null;
+      engineWorkerFailed = true;
       return null;
     }
   }
@@ -222,6 +225,7 @@
       } catch (error) {
         engineWorkerPending.delete(taskId);
         engineWorker = null;
+        engineWorkerFailed = true;
         requestEngineInBackground(type, payload).then(resolve, reject);
       }
     }).catch(error => {
