@@ -41,6 +41,15 @@
   let bookMode = "random";
   let engineDepth = 4;
   let busy = false;
+  let scanQueuedWhileBusy = false;
+  let scanTimer = null;
+  let observedBoard = null;
+  let boardObserver = null;
+  let engineWorker = null;
+  let engineWorkerRequestId = 0;
+  const engineWorkerPending = new Map();
+  let lastMetadataRefreshAt = 0;
+  let metadataBoard = null;
   let lastPositionKey = "";
   let lastResult = null;
   let lastBookName = "";
@@ -94,6 +103,78 @@
     return document.querySelector("wc-chess-board.board, wc-chess-board");
   }
 
+  function getEngineWorker() {
+    if (engineWorker) return engineWorker;
+
+    try {
+      engineWorker = new Worker(chrome.runtime.getURL("engine-worker.js"));
+      engineWorker.onmessage = event => {
+        const {taskId, ok, result, error} = event.data || {};
+        const pending = engineWorkerPending.get(taskId);
+        if (!pending) return;
+        engineWorkerPending.delete(taskId);
+        if (ok) pending.resolve(result);
+        else pending.reject(new Error(error || "Engine worker error."));
+      };
+      engineWorker.onerror = error => {
+        for (const pending of engineWorkerPending.values()) {
+          pending.reject(new Error(error.message || "Engine worker stopped."));
+        }
+        engineWorkerPending.clear();
+        engineWorker.terminate();
+        engineWorker = null;
+      };
+      return engineWorker;
+    } catch {
+      engineWorker = null;
+      return null;
+    }
+  }
+
+  function requestEngine(type, payload) {
+    return new Promise((resolve, reject) => {
+      const worker = getEngineWorker();
+      if (!worker) {
+        reject(new Error("Engine worker is unavailable."));
+        return;
+      }
+
+      const taskId = ++engineWorkerRequestId;
+      engineWorkerPending.set(taskId, {resolve, reject});
+
+      try {
+        worker.postMessage({type, taskId, ...payload});
+      } catch (error) {
+        engineWorkerPending.delete(taskId);
+        reject(error);
+      }
+    });
+  }
+
+  function scheduleScan(force = false) {
+    if (scanTimer !== null) clearTimeout(scanTimer);
+    scanTimer = setTimeout(() => {
+      scanTimer = null;
+      scan(force).catch(() => {});
+    }, force ? 0 : 120);
+  }
+
+  function observeBoard(board) {
+    if (board === observedBoard) return;
+
+    boardObserver?.disconnect();
+    observedBoard = board || null;
+    if (!board) return;
+
+    boardObserver = new MutationObserver(() => scheduleScan());
+    boardObserver.observe(board, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-cmh-fen"]
+    });
+  }
+
   function getGameId() {
     const match = location.pathname.match(/\/(?:game\/live|analysis\/game\/live|live\/game)\/(\d+)/);
     return match ? match[1] : "";
@@ -123,8 +204,14 @@
     const pieces = Array(64).fill(null);
 
     for (const node of board.querySelectorAll(".piece")) {
-      const squareClass = Array.from(node.classList).find(value => /^square-\d+$/.test(value));
-      const pieceClass = Array.from(node.classList).find(value => /^[wb][pnbrqk]$/.test(value));
+      let squareClass = null;
+      let pieceClass = null;
+
+      for (const value of node.classList) {
+        if (/^square-\d+$/.test(value)) squareClass = value;
+        else if (/^[wb][pnbrqk]$/.test(value)) pieceClass = value;
+      }
+
       if (!squareClass || !pieceClass) continue;
 
       const parsed = parseSquareNumber(squareClass.slice(7));
@@ -404,6 +491,24 @@
     }
 
     return null;
+  }
+
+  function refreshMetadata(board, force = false) {
+    const detectedPlayerSide = readPlayerSide();
+    if (detectedPlayerSide) playerSide = detectedPlayerSide;
+
+    const now = Date.now();
+    if (!force && metadataBoard === board && now - lastMetadataRefreshAt < 2000) return;
+
+    const detectedRating = readPlayerRating();
+    if (detectedRating) humanRating = detectedRating;
+    const detectedOpponentRating = readOpponentRating();
+    if (detectedOpponentRating) opponentRating = detectedOpponentRating;
+    const detectedGameMode = readGameMode();
+    if (detectedGameMode) gameMode = detectedGameMode;
+
+    metadataBoard = board;
+    lastMetadataRefreshAt = now;
   }
 
   function readOpponentRating() {
@@ -768,7 +873,10 @@
   }
 
   async function scan(force = false) {
-    if (busy) return stateResponse();
+    if (busy) {
+      scanQueuedWhileBusy = true;
+      return stateResponse();
+    }
     busy = true;
 
     try {
@@ -792,25 +900,13 @@
       }
 
       const board = getBoardElement();
+      observeBoard(board);
       if (!board) {
         setStatus("No chessboard", "This page does not currently contain a Chess.com board.");
         return stateResponse();
       }
 
-      const engine = window.__CMH_ENGINE__;
-      if (!engine) {
-        setStatus("Local engine loading", "The built-in engine has not finished loading yet.");
-        return stateResponse();
-      }
-
-      const detectedRating = readPlayerRating();
-      if (detectedRating) humanRating = detectedRating;
-      const detectedPlayerSide = readPlayerSide();
-      if (detectedPlayerSide) playerSide = detectedPlayerSide;
-      const detectedOpponentRating = readOpponentRating();
-      if (detectedOpponentRating) opponentRating = detectedOpponentRating;
-      const detectedGameMode = readGameMode();
-      if (detectedGameMode) gameMode = detectedGameMode;
+      refreshMetadata(board);
 
       const fenState = readFenState(board);
       const position = fenState?.position || readPosition(board);
@@ -830,7 +926,19 @@
       } else {
         updatePositionState(position);
       }
-      const gameState = engine.getGameState(position, side, castlingRights, epSquare);
+
+      let gameState;
+      try {
+        gameState = await requestEngine("gameState", {
+          position,
+          side,
+          castlingRights,
+          epSquare
+        });
+      } catch (error) {
+        setStatus("Engine unavailable", error.message);
+        return stateResponse();
+      }
       const key = getPositionKey(position, side);
 
       if (force) {
@@ -855,15 +963,24 @@
 
       const bookResult = await lookupBook(position, side);
       const nodeLimit = ({2: 25000, 3: 50000, 4: 100000, 5: 220000, 6: 400000})[engineDepth] || 100000;
-      const result = bookResult || engine.search(
-        position,
-        side,
-        engineDepth,
-        nodeLimit,
-        humanMode ? 8 : 4,
-        castlingRights,
-        epSquare
-      );
+      let result = bookResult;
+
+      if (!result) {
+        try {
+          result = await requestEngine("search", {
+            position,
+            side,
+            maxDepth: engineDepth,
+            nodeLimit,
+            alternativeCount: humanMode ? 8 : 4,
+            castlingRights,
+            epSquare
+          });
+        } catch (error) {
+          setStatus("Engine unavailable", error.message);
+          return stateResponse();
+        }
+      }
 
       if (!result) {
         clearArrows(board);
@@ -871,6 +988,17 @@
         lastBookName = "";
         lastPositionKey = key;
         setStatus("No legal move", "The current position has no legal move available.");
+        return stateResponse();
+      }
+
+      const latestFenState = readFenState(board);
+      const latestPosition = latestFenState?.position || readPosition(board);
+      const latestSide = latestFenState?.side || getSideToMove();
+      const latestKey = latestPosition.filter(Boolean).length
+        ? getPositionKey(latestPosition, latestSide)
+        : null;
+      if (latestKey && latestKey !== key) {
+        scheduleScan();
         return stateResponse();
       }
 
@@ -904,6 +1032,10 @@
       return stateResponse();
     } finally {
       busy = false;
+      if (scanQueuedWhileBusy) {
+        scanQueuedWhileBusy = false;
+        scheduleScan();
+      }
     }
   }
 
@@ -991,9 +1123,12 @@
     }
   });
 
+  observeBoard(getBoardElement());
   setInterval(() => {
-    scan().catch(() => {});
-  }, 900);
+    const board = getBoardElement();
+    if (board !== observedBoard) observeBoard(board);
+    scheduleScan();
+  }, 3000);
 
-  scan().catch(() => {});
+  scheduleScan(true);
 })();
