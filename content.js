@@ -509,7 +509,7 @@
         );
       } else {
         setStatus(
-          "Best " + moveName(result),
+          humanMode ? "Human candidate " + moveName(displayResult.humanMove || result) : "Best " + moveName(result),
           "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
       }
@@ -542,8 +542,12 @@
       } else if (board && lastResult) {
         drawArrows(board, lastResult, getSideToMove());
         setStatus(
-          lastResult.book ? "Book " + moveName(lastResult) : "Best " + moveName(lastResult),
-          lastResult.book ? (lastResult.bookName || "Opening book") : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
+          lastResult.book
+            ? (humanMode ? "Human candidate " + moveName(lastResult.humanMove || lastResult) : "Book " + moveName(lastResult))
+            : (humanMode ? "Human candidate " + moveName(lastResult.humanMove || lastResult) : "Best " + moveName(lastResult)),
+          lastResult.book
+            ? (lastResult.bookName || "Opening book")
+            : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
         );
       }
       sendResponse(stateResponse());
