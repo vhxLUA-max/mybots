@@ -4,6 +4,7 @@
 
   let hidden = false;
   let showAlternatives = true;
+  let humanMode = false;
   let bookEnabled = true;
   let bookMode = "random";
   let engineDepth = 4;
@@ -31,6 +32,7 @@
       detail: currentDetail,
       hidden,
       showAlternatives,
+      humanMode,
       bookEnabled,
       bookMode,
       engineDepth,
@@ -195,8 +197,8 @@
   }
 
   function classifyMove(move, index, bestScore, isBook) {
-    if (index === 0) return "best";
     if (isBook) {
+      if (index === 0) return "best";
       const ratio = bestScore > 0 ? move.score / bestScore : 0;
       if (ratio >= 0.65) return "good";
       if (ratio >= 0.35) return "ok";
@@ -204,9 +206,35 @@
     }
 
     const loss = bestScore - move.score;
+    if (loss <= 0) return "best";
     if (loss <= 30) return "good";
     if (loss <= 100) return "ok";
     return "bad";
+  }
+
+  function chooseHumanCandidate(result) {
+    const candidates = (result.alternatives?.length
+      ? result.alternatives
+      : [result]).slice(0, 4);
+
+    if (candidates.length <= 1) return candidates[0];
+
+    const bestScore = result.score;
+    const eligible = candidates.filter(move => result.book || bestScore - move.score <= 80);
+    const pool = eligible.length ? eligible : candidates;
+    const weighted = pool.map((move, index) => ({
+      move,
+      weight: Math.exp(-Math.max(0, bestScore - move.score) / 35) / (index + 1)
+    }));
+    const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+    let threshold = Math.random() * total;
+
+    for (const entry of weighted) {
+      threshold -= entry.weight;
+      if (threshold <= 0) return entry.move;
+    }
+
+    return weighted[weighted.length - 1].move;
   }
 
   function drawArrows(board, result, side = getSideToMove()) {
@@ -216,7 +244,10 @@
     const candidates = (result.alternatives?.length
       ? result.alternatives
       : [result]).slice(0, 4);
-    const moves = showAlternatives ? candidates : [candidates[0]];
+    const humanMove = result.humanMove || (humanMode ? chooseHumanCandidate(result) : candidates[0]);
+    const moves = humanMode
+      ? [humanMove]
+      : (showAlternatives ? candidates : [candidates[0]]);
     const entries = moves.map((move, index) => ({
       move,
       index,
@@ -463,14 +494,17 @@
         return stateResponse();
       }
 
-      lastResult = result;
+      const displayResult = humanMode
+        ? {...result, humanMove: chooseHumanCandidate(result)}
+        : result;
+      lastResult = displayResult;
       lastBookName = result.bookName || "";
-      drawArrows(board, result, side);
+      drawArrows(board, displayResult, side);
       lastPositionKey = key;
 
       if (result.book) {
         setStatus(
-          "Book " + moveName(result),
+          humanMode ? "Human candidate " + moveName(displayResult.humanMove || result) : "Book " + moveName(result),
           (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
         );
       } else {
@@ -514,6 +548,13 @@
       }
       sendResponse(stateResponse());
       return;
+    }
+
+    if (message?.type === "setHumanMode") {
+      humanMode = Boolean(message.value);
+      lastPositionKey = "";
+      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
+      return true;
     }
 
     if (message?.type === "setAlternatives") {
