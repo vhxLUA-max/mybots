@@ -2,7 +2,9 @@
   const statusEl = document.querySelector("#cmh-status");
   const detailEl = document.querySelector("#cmh-detail");
   const playerRatingEl = document.querySelector("#cmh-player-rating");
+  const opponentRatingEl = document.querySelector("#cmh-opponent-rating");
   const gameModeEl = document.querySelector("#cmh-game-mode");
+  const confidenceEl = document.querySelector("#cmh-confidence");
   const dotEl = document.querySelector("#cmh-dot");
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
@@ -38,7 +40,13 @@
     playerRatingEl.textContent = response.humanRating
       ? Number(response.humanRating).toLocaleString()
       : "—";
+    opponentRatingEl.textContent = response.opponentRating
+      ? Number(response.opponentRating).toLocaleString()
+      : "—";
     gameModeEl.textContent = response.gameMode || "Detecting...";
+    confidenceEl.textContent = response.humanConfidence
+      ? response.humanConfidence + "%"
+      : "—";
   }
 
   function formatBookSize(size) {
