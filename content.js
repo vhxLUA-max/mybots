@@ -2,6 +2,33 @@
   if (window.__chessMoveHelperLoaded) return;
   window.__chessMoveHelperLoaded = true;
 
+  const ARROW_COLORS = {
+    best: "rgba(20, 160, 80, 0.75)",
+    good: "rgba(90, 190, 120, 0.6)",
+    human: "rgba(240, 170, 40, 0.75)",
+    mistake: "rgba(240, 120, 40, 0.7)",
+    blunder: "rgba(220, 50, 50, 0.75)",
+    response: "rgba(60, 120, 220, 0.6)"
+  };
+
+  function arrowColor(cpEval, isHumanPick) {
+    if (isHumanPick) return ARROW_COLORS.human;
+    const cp = Math.abs(cpEval);
+    if (cp < 30) return ARROW_COLORS.good;
+    if (cp < 100) return ARROW_COLORS.best;
+    if (cp < 250) return ARROW_COLORS.mistake;
+    return ARROW_COLORS.blunder;
+  }
+
+  function arrowCategory(cpEval, isHumanPick) {
+    if (isHumanPick) return "human";
+    const cp = Math.abs(cpEval);
+    if (cp < 30) return "good";
+    if (cp < 100) return "best";
+    if (cp < 250) return "mistake";
+    return "blunder";
+  }
+
   let hidden = false;
   let showAlternatives = true;
   let humanMode = false;
@@ -196,22 +223,6 @@
     return Math.max(0.02, Math.min(0.98, 0.5 + 0.5 * Math.tanh(whiteScore / 400)));
   }
 
-  function classifyMove(move, index, bestScore, isBook) {
-    if (isBook) {
-      if (index === 0) return "best";
-      const ratio = bestScore > 0 ? move.score / bestScore : 0;
-      if (ratio >= 0.65) return "good";
-      if (ratio >= 0.35) return "ok";
-      return "bad";
-    }
-
-    const loss = bestScore - move.score;
-    if (loss <= 0) return "best";
-    if (loss <= 30) return "good";
-    if (loss <= 100) return "ok";
-    return "bad";
-  }
-
   function chooseHumanCandidate(result) {
     const candidates = (result.alternatives?.length
       ? result.alternatives
@@ -253,7 +264,8 @@
     const entries = moves.map((move, index) => ({
       move,
       index,
-      category: classifyMove(move, index, result.score, result.book)
+      isHumanPick: humanMode && move === humanMove,
+      category: arrowCategory(move.score, humanMode && move === humanMove)
     }));
     const drawEntries = entries.sort((a, b) => {
       if (a.index === 0) return 1;
@@ -316,16 +328,23 @@
       marker.setAttribute("markerHeight", "5");
       marker.setAttribute("orient", "auto");
 
-      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
       head.classList.add("cmh-arrow-head", "cmh-" + category);
       head.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+      const markerColor = arrowColor(
+        moves.find(move => arrowCategory(move.score, humanMode && move === humanMove) === category)?.score || 0,
+        category === "human"
+      );
+      head.style.setProperty("fill", markerColor, "important");
       marker.appendChild(head);
       defs.appendChild(marker);
     }
     svg.appendChild(defs);
 
     moves.forEach((move, index) => {
-      const category = classifyMove(move, index, result.score, result.book);
+      const isHumanPick = humanMode && move === humanMove;
+      const category = arrowCategory(move.score, isHumanPick);
+      const color = arrowColor(move.score, isHumanPick);
 
       const source = indexToSquare(move.from);
       const target = indexToSquare(move.to);
@@ -345,6 +364,7 @@
       line.setAttribute("y2", String(targetPoint.y));
       line.setAttribute("marker-end", "url(#cmh-arrow-head-" + category + ")");
       line.classList.add("cmh-arrow", "cmh-" + category);
+      line.style.setProperty("stroke", color, "important");
       svg.appendChild(line);
 
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -361,6 +381,7 @@
       label.setAttribute("dominant-baseline", "middle");
       label.textContent = formatEvaluation(move.score, side, result.book);
       label.classList.add("cmh-eval-label", "cmh-" + category);
+      label.style.setProperty("fill", color, "important");
       svg.appendChild(label);
     });
 
