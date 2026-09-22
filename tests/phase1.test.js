@@ -388,6 +388,11 @@ test("content state uses authoritative FEN side, castling, and en passant", asyn
   assert.equal(result.response.playerSide, "b");
   assert.equal(result.response.sideToMove, "b");
   assert.equal(result.response.isPlayerTurn, true);
+  assert.equal(result.response.analysisSource, "Local engine");
+  assert.equal(result.response.analysisDepth, 1);
+  assert.equal(result.response.analysisNodes, 1);
+  assert.equal(result.response.analysisCandidates[0].loss, 0);
+  assert.equal(result.response.analysisCandidates[0].move, "e5d6");
 });
 
 test("content state distinguishes player side from side to move", async () => {
