@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__CMH_MAIA__) return;
 
-  importScripts("ort.min.js", "maia3/maia3-tokenizer.js");
+  importScripts("ort.min.js", "maia3/maia3-tokenizer.js", "maia3/chess-rules.js");
 
   const MODEL_URL = "https://raw.githubusercontent.com/vhxLUA-max/cheeezie-engine/main/lib/maia3/maia3-5m.onnx";
   const ORT_WASM_BASE = "https://raw.githubusercontent.com/vhxLUA-max/cheeezie-engine/main/lib/ort/";
@@ -110,39 +110,40 @@
   }
 
   async function search(position, side, alternativeCount = 4, castlingRights = 15, epSquare = null, selfElo = 1500, oppoElo = 1500) {
-    await init();
-
-    const legalResult = globalThis.__CMH_ENGINE__.search(
+    const legalMoves = globalThis.__CMH_CHESS_RULES__.legalMoves(
       position,
       side,
-      1,
-      50000,
-      256,
       castlingRights,
       epSquare
     );
 
-    const legalMoves = legalResult.alternatives || [];
     if (!legalMoves.length) {
+      const gameState = globalThis.__CMH_CHESS_RULES__.getGameState(
+        position,
+        side,
+        castlingRights,
+        epSquare
+      );
       return {
-        gameState: legalResult.gameState,
+        gameState,
         from: null,
         to: null,
         promotion: null,
         score: 0,
-        mate: legalResult.mate ?? null,
+        mate: null,
         pv: [],
         depth: 0,
-        nodes: legalResult.nodes || 0,
+        nodes: 0,
         alternatives: [],
         maia: true,
         model: "Maia 3 5M"
       };
     }
 
+    await init();
+
     const turn = side;
     const legalIndices = [];
-    const legalMoveByIndex = new Map();
 
     for (const move of legalMoves) {
       let uci = moveToUci(move);
@@ -152,7 +153,6 @@
       if (index === undefined) continue;
 
       legalIndices.push(index);
-      legalMoveByIndex.set(index, move);
     }
 
     if (!legalIndices.length) throw new Error("Maia legal move vocabulary contains no current legal moves.");
