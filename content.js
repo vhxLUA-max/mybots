@@ -36,6 +36,7 @@
   let opponentRating = null;
   let gameMode = null;
   let humanConfidence = null;
+  let playerSide = null;
   let bookEnabled = true;
   let bookMode = "random";
   let engineDepth = 4;
@@ -68,6 +69,7 @@
       opponentRating,
       gameMode,
       humanConfidence,
+      playerSide,
       bookEnabled,
       bookMode,
       engineDepth,
@@ -213,6 +215,7 @@
 
   function clearArrows(board) {
     board.querySelector(".cmh-arrow-layer")?.remove();
+    board.querySelector(".cmh-eval-bar")?.remove();
   }
 
   function formatEvaluation(score, side, isBook) {
@@ -276,6 +279,60 @@
 
     candidates.sort((a, b) => b.top - a.top);
     return candidates[0]?.rating ?? null;
+  }
+
+  function readPlayerSide() {
+    const zones = [
+      {
+        selectors: [
+          "#board-layout-player-bottom",
+          ".board-layout-player-bottom",
+          ".player-component.player-bottom",
+          ".player-bottom"
+        ],
+        position: "bottom"
+      },
+      {
+        selectors: [
+          "#board-layout-player-top",
+          ".board-layout-player-top",
+          ".player-component.player-top",
+          ".player-top"
+        ],
+        position: "top"
+      }
+    ];
+
+    const detect = element => {
+      if (!element) return null;
+      const parts = [
+        element.getAttribute("data-color"),
+        element.getAttribute("data-player-color"),
+        element.getAttribute("color"),
+        element.className
+      ];
+
+      for (const ratingElement of element.querySelectorAll("[class*='rating']")) {
+        parts.push(ratingElement.className);
+        parts.push(ratingElement.getAttribute("data-color"));
+        parts.push(ratingElement.getAttribute("data-player-color"));
+      }
+
+      const raw = parts.filter(Boolean).join(" ").toLowerCase();
+      if (/\bcc-user-rating-white\b|\bcolor-white\b|\bwhite-player\b/.test(raw)) return "w";
+      if (/\bcc-user-rating-black\b|\bcolor-black\b|\bblack-player\b/.test(raw)) return "b";
+      return null;
+    };
+
+    for (const zone of zones) {
+      for (const selector of zone.selectors) {
+        const element = document.querySelector(selector);
+        const side = detect(element);
+        if (side) return side;
+      }
+    }
+
+    return null;
   }
 
   function readOpponentRating() {
@@ -455,6 +512,41 @@
     return {moves: output, humanMove};
   }
 
+  function drawEvaluationBar(board, result, side, orientation) {
+    board.querySelector(".cmh-eval-bar")?.remove();
+    if (hidden) return;
+
+    const bar = document.createElement("div");
+    bar.classList.add("cmh-eval-bar");
+    if (orientation.flipped) bar.classList.add("cmh-flipped");
+
+    const blackFill = document.createElement("div");
+    blackFill.classList.add("cmh-eval-bar-black");
+    bar.appendChild(blackFill);
+
+    if (!result.book) {
+      const whiteRatio = evaluationPercent(result.score, side);
+      const whiteFill = document.createElement("div");
+      whiteFill.classList.add("cmh-eval-bar-white");
+      whiteFill.style.height = (whiteRatio * 100) + "%";
+      if (orientation.flipped) {
+        whiteFill.style.top = "0";
+        whiteFill.style.bottom = "auto";
+      }
+      bar.appendChild(whiteFill);
+
+      const score = document.createElement("span");
+      score.classList.add("cmh-eval-bar-score");
+      score.textContent = formatEvaluation(result.score, side, false);
+      score.style.top = ((orientation.flipped ? whiteRatio : 1 - whiteRatio) * 100) + "%";
+      bar.appendChild(score);
+    } else {
+      bar.classList.add("cmh-eval-book");
+    }
+
+    board.appendChild(bar);
+  }
+
   function drawArrows(board, result, side = getSideToMove()) {
     clearArrows(board);
     if (hidden) return;
@@ -494,37 +586,7 @@
 
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
     const categories = [...new Set(entries.map(entry => entry.category))];
-    const evaluationTrack = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    evaluationTrack.setAttribute("x", "-2");
-    evaluationTrack.setAttribute("y", "0");
-    evaluationTrack.setAttribute("width", "1.7");
-    evaluationTrack.setAttribute("height", "100");
-    evaluationTrack.setAttribute("rx", "0.5");
-    evaluationTrack.classList.add("cmh-eval-bar-track");
-    svg.appendChild(evaluationTrack);
-
-    if (!result.book) {
-      const whiteRatio = evaluationPercent(result.score, side);
-      const whiteHeight = whiteRatio * 100;
-      const whiteY = orientation.flipped ? 0 : 100 - whiteHeight;
-      const whiteBar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      whiteBar.setAttribute("x", "-2");
-      whiteBar.setAttribute("y", String(whiteY));
-      whiteBar.setAttribute("width", "1.7");
-      whiteBar.setAttribute("height", String(whiteHeight));
-      whiteBar.setAttribute("rx", "0.5");
-      whiteBar.classList.add("cmh-eval-bar-white");
-      svg.appendChild(whiteBar);
-    }
-
-    const evaluationLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    evaluationLabel.setAttribute("x", "-2.6");
-    evaluationLabel.setAttribute("y", orientation.flipped ? "97" : "3.8");
-    evaluationLabel.setAttribute("text-anchor", "end");
-    evaluationLabel.textContent = formatEvaluation(result.score, side, result.book);
-    evaluationLabel.classList.add("cmh-eval-score");
-    if (result.book) evaluationLabel.classList.add("cmh-eval-book");
-    svg.appendChild(evaluationLabel);
+    drawEvaluationBar(board, result, side, orientation);
     for (const category of categories) {
       const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
       marker.setAttribute("id", "cmh-arrow-head-" + category);
@@ -651,6 +713,7 @@
         opponentRating = null;
         gameMode = null;
         humanConfidence = null;
+        playerSide = null;
         stateInitialized = false;
         lastObservedPosition = null;
         const existingBoard = getBoardElement();
@@ -671,6 +734,8 @@
 
       const detectedRating = readPlayerRating();
       if (detectedRating) humanRating = detectedRating;
+      const detectedPlayerSide = readPlayerSide();
+      if (detectedPlayerSide) playerSide = detectedPlayerSide;
       const detectedOpponentRating = readOpponentRating();
       if (detectedOpponentRating) opponentRating = detectedOpponentRating;
       const detectedGameMode = readGameMode();
