@@ -124,7 +124,9 @@
       const loss = document.createElement("span");
       loss.className = "cmh-candidate-loss";
       loss.textContent = candidate.loss === null ? "Book" : candidate.loss > 0
-        ? "-" + (candidate.loss / 100).toFixed(2)
+        ? candidate.lossUnit === "pp"
+          ? "-" + (candidate.loss / 10).toFixed(1) + " pp"
+          : "-" + (candidate.loss / 100).toFixed(2)
         : "Best";
 
       row.appendChild(move);
