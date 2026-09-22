@@ -1,0 +1,71 @@
+body {
+  width: auto;
+  min-width: 0;
+  min-height: 100vh;
+  background: #0a0c10;
+}
+
+.cmh-dashboard {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.cmh-dashboard-header {
+  margin-bottom: 22px;
+}
+
+.cmh-dashboard-label {
+  margin-top: 6px;
+  color: #697284;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.cmh-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
+  gap: 18px;
+}
+
+.cmh-dashboard-main,
+.cmh-dashboard-side {
+  min-width: 0;
+}
+
+.cmh-dashboard-side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cmh-dashboard-info {
+  padding: 16px;
+  border: 1px solid #242934;
+  border-radius: 12px;
+  background: #12151a;
+}
+
+.cmh-dashboard-info p {
+  margin: 10px 0 0;
+  color: #98a1b2;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cmh-dashboard .cmh-status-card,
+.cmh-dashboard .cmh-options,
+.cmh-dashboard .cmh-legend {
+  background: #101319;
+}
+
+@media (max-width: 760px) {
+  .cmh-dashboard {
+    padding: 18px;
+  }
+
+  .cmh-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
