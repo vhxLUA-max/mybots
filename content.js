@@ -546,7 +546,7 @@
 
     drawEntries.forEach(entry => {
       const {move, isHumanPick, category} = entry;
-      const color = arrowColor(move.score, isHumanPick);
+      const color = ARROW_COLORS[category];
 
       const source = indexToSquare(move.from);
       const target = indexToSquare(move.to);
