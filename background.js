@@ -1,8 +1,13 @@
+importScripts("offscreen.js");
+
 const OFFSCREEN_DOCUMENT_PATH="offscreen.html";
+const HAS_OFFSCREEN_API=Boolean(chrome.offscreen?.createDocument);
 
 let creatingOffscreenDocument=null;
 
 async function ensureOffscreenDocument(){
+  if(!HAS_OFFSCREEN_API)return;
+
   const offscreenUrl=chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 
   if("getContexts" in chrome.runtime){
@@ -11,6 +16,8 @@ async function ensureOffscreenDocument(){
       documentUrls:[offscreenUrl]
     });
     if(contexts.length)return;
+  }else if(await chrome.offscreen.hasDocument?.()){
+    return;
   }
 
   if(creatingOffscreenDocument){
@@ -36,6 +43,12 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.type!=="stockfishSearch")return;
 
   (async()=>{
+    if(!HAS_OFFSCREEN_API){
+      const result=await search(message.fen,message.depth,message.alternativeCount);
+      sendResponse({ok:true,result});
+      return;
+    }
+
     await ensureOffscreenDocument();
 
     const response=await chrome.runtime.sendMessage({
