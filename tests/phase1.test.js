@@ -5,42 +5,33 @@ const path=require("node:path");
 
 const root=path.resolve(__dirname,"..");
 
-test("Stockfish-only manifest",()=>{
+test("Stockfish runs from extension origin via offscreen worker host",()=>{
   const manifest=JSON.parse(fs.readFileSync(path.join(root,"manifest.json"),"utf8"));
-  assert.equal(manifest.background,undefined);
-  assert.deepEqual(manifest.web_accessible_resources[0].resources,[
-    "stockfish-19-lite-single.js",
-    "stockfish-19-lite-single.wasm"
-  ]);
-  assert.equal(manifest.content_scripts.some(item=>item.js?.includes("player-side-main.js")),true);
-  assert.equal(manifest.content_scripts.some(item=>item.js?.includes("content.js")),true);
-});
-
-test("Direct Stockfish UCI integration",()=>{
   const content=fs.readFileSync(path.join(root,"content.js"),"utf8");
-  assert.equal(content.includes('new Worker(chrome.runtime.getURL("stockfish-19-lite-single.js"))'),true);
-  assert.equal(content.includes('postMessage("uci")'),true);
-  assert.equal(content.includes("position fen"),true);
-  assert.equal(content.includes("go depth"),true);
-  assert.equal(content.includes("bestmove"),true);
-  assert.equal(content.includes("Stockfish 19 Lite Single"),true);
-  for(const value of ["Maia","maia3","Polyglot","bookLookup","engine-worker.js","stockfish-worker.js"]){
+  const background=fs.readFileSync(path.join(root,"background.js"),"utf8");
+  const offscreen=fs.readFileSync(path.join(root,"offscreen.js"),"utf8");
+  const html=fs.readFileSync(path.join(root,"offscreen.html"),"utf8");
+
+  assert.equal(manifest.background.service_worker,"background.js");
+  assert.equal(manifest.permissions.includes("offscreen"),true);
+  assert.equal(manifest.web_accessible_resources,undefined);
+
+  assert.equal(content.includes("new Worker(chrome.runtime.getURL(\"stockfish-19-lite-single.js\"))"),false);
+  assert.equal(content.includes('chrome.runtime.sendMessage({'),true);
+  assert.equal(content.includes("type:\"stockfishSearch\""),true);
+
+  assert.equal(background.includes('reasons:["WORKERS"]'),true);
+  assert.equal(background.includes('url:OFFSCREEN_DOCUMENT_PATH'),true);
+  assert.equal(offscreen.includes('new Worker(chrome.runtime.getURL("stockfish-19-lite-single.js"))'),true);
+  assert.equal(html.includes('<script src="offscreen.js"></script>'),true);
+
+  for(const value of ["Maia","maia3","Polyglot","bookLookup","stockfish-worker.js"]){
     assert.equal(content.includes(value),false,value+" reference remains");
   }
 });
 
-test("Bundled Stockfish assets exist",()=>{
-  const jsPath=path.join(root,"stockfish-19-lite-single.js");
-  const wasmPath=path.join(root,"stockfish-19-lite-single.wasm");
-  assert.equal(fs.existsSync(jsPath),true);
-  assert.equal(fs.existsSync(wasmPath),true);
-  assert.ok(fs.statSync(wasmPath).size>1000000);
-});
-
-test("Popup and dashboard are Stockfish-only",()=>{
-  for(const file of ["popup.html","dashboard.html"]){
-    const html=fs.readFileSync(path.join(root,file),"utf8");
-    assert.equal(html.includes("STOCKFISH 19 CHESS ANALYSIS"),true);
-    assert.equal(/Maia|Polyglot|Opening book|Human mode|Engine selector/i.test(html),false);
-  }
+test("Stockfish assets remain bundled",()=>{
+  assert.equal(fs.existsSync(path.join(root,"stockfish-19-lite-single.js")),true);
+  assert.equal(fs.existsSync(path.join(root,"stockfish-19-lite-single.wasm")),true);
+  assert.ok(fs.statSync(path.join(root,"stockfish-19-lite-single.wasm")).size>1000000);
 });

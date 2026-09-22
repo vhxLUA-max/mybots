@@ -35,8 +35,6 @@
   let scanTimer = null;
   let observedBoard = null;
   let boardObserver = null;
-  let stockfishWorker = null;
-  let stockfishReady = false;
   let lastMetadataRefreshAt = 0;
   let metadataBoard = null;
   let lastPositionKey = "";
@@ -115,167 +113,18 @@
   
 
   async function requestStockfish(fen,depth=16,alternativeCount=4){
-    if(!stockfishWorker){
-      stockfishWorker=new Worker(chrome.runtime.getURL("stockfish-19-lite-single.js"));
-      stockfishWorker.addEventListener("error",()=>{
-        try{stockfishWorker?.terminate();}catch{}
-        stockfishWorker=null;
-        stockfishReady=false;
-      });
-    }
-
-    const worker=stockfishWorker;
-    const waitFor=(predicate,timeout=15000)=>new Promise((resolve,reject)=>{
-      const handler=event=>{
-        const line=typeof event.data==="string"?event.data.trim():String(event.data??"").trim();
-        if(!predicate(line))return;
-        clearTimeout(timer);
-        worker.removeEventListener("message",handler);
-        resolve(line);
-      };
-      const timer=setTimeout(()=>{
-        worker.removeEventListener("message",handler);
-        reject(new Error("Stockfish timed out waiting for engine response."));
-      },timeout);
-      worker.addEventListener("message",handler);
+    const response=await chrome.runtime.sendMessage({
+      type:"stockfishSearch",
+      fen,
+      depth,
+      alternativeCount
     });
 
-    if(!stockfishReady){
-      const uciok=waitFor(line=>line==="uciok");
-      worker.postMessage("uci");
-      await uciok;
-      const readyok=waitFor(line=>line==="readyok");
-      worker.postMessage("isready");
-      await readyok;
-      stockfishReady=true;
+    if(!response?.ok){
+      throw new Error(response?.error||"Stockfish service unavailable.");
     }
 
-    const lines=new Map();
-    const parseMove=value=>{
-      if(!/^[a-h][1-8][a-h][1-8][nbrq]?$/i.test(value||""))return null;
-      const files="abcdefgh";
-      return {
-        from:(Number(value[1])-1)*8+files.indexOf(value[0].toLowerCase()),
-        to:(Number(value[3])-1)*8+files.indexOf(value[2].toLowerCase()),
-        promotion:value.length>4?value[4].toUpperCase():null
-      };
-    };
-    const scoreValue=(cp,mate)=>{
-      if(mate!==null){
-        const distance=Math.abs(mate);
-        return mate>=0?1000000-distance*2:-1000000+distance*2;
-      }
-      return cp;
-    };
-    const parseInfo=line=>{
-      const multipv=Number(line.match(/\bmultipv (\d+)/)?.[1]||1);
-      const depthValue=Number(line.match(/\bdepth (\d+)/)?.[1]||0);
-      const nodes=Number(line.match(/\bnodes (\d+)/)?.[1]||0);
-      const cpMatch=line.match(/\bscore cp (-?\d+)/);
-      const mateMatch=line.match(/\bscore mate (-?\d+)/);
-      const pvMatch=line.match(/\bpv (.+)$/);
-      if(!cpMatch&&!mateMatch)return;
-      const cp=cpMatch?Number(cpMatch[1]):null;
-      const mate=mateMatch?Number(mateMatch[1]):null;
-      const pv=pvMatch?pvMatch[1].trim().split(/\s+/).map(parseMove).filter(Boolean):[];
-      lines.set(multipv,{multipv,depth:depthValue,nodes,score:scoreValue(cp??0,mate),mate,pv});
-    };
-
-    let resolveSearch,rejectSearch;
-    const completion=new Promise((resolve,reject)=>{
-      resolveSearch=resolve;
-      rejectSearch=reject;
-    });
-    const handler=event=>{
-      const line=typeof event.data==="string"?event.data.trim():String(event.data??"").trim();
-      if(!line)return;
-      if(line.startsWith("info "))parseInfo(line);
-      if(line.startsWith("bestmove "))resolveSearch(line.split(/\s+/)[1]||"");
-    };
-    worker.addEventListener("message",handler);
-
-    const timeout=setTimeout(()=>{
-      try{worker.postMessage("stop");}catch{}
-      rejectSearch(new Error("Stockfish search timed out."));
-    },30000);
-
-    try{
-      worker.postMessage("ucinewgame");
-      worker.postMessage("setoption name MultiPV value "+Math.max(1,Math.min(8,Number(alternativeCount)||4)));
-
-      const readyok=waitFor(line=>line==="readyok");
-      worker.postMessage("isready");
-      await readyok;
-
-      worker.postMessage("position fen "+fen);
-      worker.postMessage("go depth "+Math.max(1,Math.min(30,Number(depth)||16)));
-
-      const bestmove=await completion;
-      const entries=[...lines.values()].sort((a,b)=>a.multipv-b.multipv);
-      const bestInfo=entries[0]||null;
-      const fallback=parseMove(bestmove);
-
-      if(!fallback)return {
-        gameState:"no-move",
-        from:null,
-        to:null,
-        promotion:null,
-        score:0,
-        mate:null,
-        pv:[],
-        depth:bestInfo?.depth||Number(depth)||0,
-        nodes:bestInfo?.nodes||0,
-        alternatives:[],
-        stockfish:true,
-        model:"Stockfish 19 Lite Single"
-      };
-
-      const baseScore=bestInfo?.score??0;
-      const alternatives=entries.slice(0,8).map((entry,index)=>{
-        const firstMove=entry.pv[0]||(index===0?fallback:null);
-        if(!firstMove)return null;
-        return {
-          ...firstMove,
-          score:entry.score,
-          loss:Math.max(0,baseScore-entry.score),
-          mate:entry.mate,
-          rank:index+1,
-          depth:entry.depth,
-          nodes:entry.nodes
-        };
-      }).filter(Boolean);
-
-      if(!alternatives.length){
-        alternatives.push({
-          ...fallback,
-          score:baseScore,
-          loss:0,
-          mate:bestInfo?.mate??null,
-          rank:1,
-          depth:bestInfo?.depth||Number(depth)||0,
-          nodes:bestInfo?.nodes||0
-        });
-      }
-
-      const best=alternatives[0];
-      return {
-        gameState:"playing",
-        from:best.from,
-        to:best.to,
-        promotion:best.promotion,
-        score:best.score,
-        mate:best.mate??null,
-        pv:bestInfo?.pv||[fallback],
-        depth:bestInfo?.depth||Number(depth)||0,
-        nodes:bestInfo?.nodes||0,
-        alternatives,
-        stockfish:true,
-        model:"Stockfish 19 Lite Single"
-      };
-    }finally{
-      clearTimeout(timeout);
-      worker.removeEventListener("message",handler);
-    }
+    return response.result;
   }
 
   function positionToFen(position, side, rights, ep) {
