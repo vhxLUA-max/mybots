@@ -77,7 +77,47 @@
     return ratings[depth] || 1800;
   }
 
+  function buildAnalysisCandidates(result, side) {
+    const candidates = (result?.alternatives?.length ? result.alternatives : result ? [result] : []).slice(0, 6);
+    const bestScore = candidates[0]?.score ?? result?.score ?? 0;
+
+    return candidates.map((move, index) => ({
+      move: moveName(move),
+      evaluation: result?.book ? "Book" : formatEvaluation(move.score, side, false),
+      loss: result?.book ? null : Math.max(0, move.loss ?? bestScore - move.score),
+      category: arrowCategory(move, bestScore, move === result?.humanMove, Boolean(result?.book))
+    }));
+  }
+
+  function analysisState() {
+    const result = lastResult;
+    if (!result || !sideToMove) {
+      return {
+        source: null,
+        evaluation: null,
+        mate: null,
+        depth: null,
+        nodes: null,
+        pv: "",
+        bookName: "",
+        candidates: []
+      };
+    }
+
+    return {
+      source: result.book ? "Opening book" : "Local engine",
+      evaluation: result.book ? "BOOK" : formatEvaluation(result.score, sideToMove, false),
+      mate: result.mate ?? null,
+      depth: result.book ? null : result.depth,
+      nodes: result.book ? null : result.nodes,
+      pv: result.book ? "" : formatPrincipalVariation(result.pv),
+      bookName: result.bookName || "",
+      candidates: buildAnalysisCandidates(result, sideToMove)
+    };
+  }
+
   function stateResponse() {
+    const analysis = analysisState();
     return {
       ok: true,
       status: currentStatus,
@@ -97,7 +137,15 @@
       bookMode,
       engineDepth,
       bookName: lastBookName,
-      gameId: currentGameId
+      gameId: currentGameId,
+      analysisSource: analysis.source,
+      analysisEvaluation: analysis.evaluation,
+      analysisMate: analysis.mate,
+      analysisDepth: analysis.depth,
+      analysisNodes: analysis.nodes,
+      analysisPV: analysis.pv,
+      analysisBookName: analysis.bookName,
+      analysisCandidates: analysis.candidates
     };
   }
 
