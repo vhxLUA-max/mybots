@@ -329,6 +329,10 @@ test("mate in one returns the expected mate-distance score", () => {
   const position = positionFromFen("7k/8/5KQ1/8/8/8/8/8 w - - 0 1");
   const result = engine.search(position, "w", 1, 50000, 8, 0, null);
   assert.equal(result.score, 999998);
+  assert.equal(result.mate, 1);
+  assert.equal(result.pv.length, 1);
+  assert.equal(result.pv[0].from, result.from);
+  assert.equal(result.pv[0].to, result.to);
 });
 
 test("Polyglot hash matches known positions", () => {
@@ -382,6 +386,32 @@ test("content state uses authoritative FEN side, castling, and en passant", asyn
   assert.equal(result.captured.searchArgs[5], 15);
   assert.equal(result.captured.searchArgs[6], index("d6"));
   assert.equal(result.response.playerSide, "b");
+  assert.equal(result.response.sideToMove, "b");
+  assert.equal(result.response.isPlayerTurn, true);
+});
+
+test("content state distinguishes player side from side to move", async () => {
+  const fen = "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR b KQkq d6 0 3";
+  const engineResult = {
+    gameState: "playing",
+    from: index("e5"),
+    to: index("d6"),
+    promotion: null,
+    score: 20,
+    depth: 1,
+    nodes: 1,
+    alternatives: [{from: index("e5"), to: index("d6"), promotion: null, score: 20}]
+  };
+  const result = await loadContentHarness({
+    fen,
+    playerSide: "w",
+    turn: "b",
+    engineResult
+  });
+
+  assert.equal(result.response.playerSide, "w");
+  assert.equal(result.response.sideToMove, "b");
+  assert.equal(result.response.isPlayerTurn, false);
 });
 
 test("content fallback turn detection remains available without bridge state", async () => {
@@ -417,6 +447,21 @@ test("SEE values an undefended queen capture", () => {
     enPassant: false
   };
   assert.equal(engine.staticExchange(position, move), 900);
+});
+
+test("engine returns a principal variation and relative candidate losses", () => {
+  const engine = loadEngine();
+  const position = positionFromFen("r1bq1rk1/ppp1bppp/2np1n2/8/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 1");
+  const result = engine.search(position, "w", 3, 120000, 6, 0, null);
+
+  assert.ok(result.pv.length >= 1);
+  assert.equal(result.pv[0].from, result.from);
+  assert.equal(result.pv[0].to, result.to);
+  assert.equal(result.alternatives[0].loss, 0);
+
+  for (let i = 1; i < result.alternatives.length; i++) {
+    assert.ok(result.alternatives[i - 1].loss <= result.alternatives[i].loss);
+  }
 });
 
 test("Phase 2 search reaches the requested depth and returns ordered alternatives", () => {
