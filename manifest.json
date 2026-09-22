@@ -12,23 +12,45 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.chess.com/*"],
-      "js": ["player-side-main.js"],
+      "matches": [
+        "https://www.chess.com/*"
+      ],
+      "js": [
+        "player-side-main.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.chess.com/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "matches": [
+        "https://www.chess.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_end"
     }
   ],
-  "host_permissions": ["https://www.chess.com/*"],
+  "host_permissions": [
+    "https://www.chess.com/*",
+    "https://raw.githubusercontent.com/*"
+  ],
   "web_accessible_resources": [
     {
-      "resources": ["engine-worker.js"],
-      "matches": ["https://www.chess.com/*"]
+      "resources": [
+        "engine-worker.js",
+        "maia3/*",
+        "ort.min.js"
+      ],
+      "matches": [
+        "https://www.chess.com/*"
+      ]
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
 }
