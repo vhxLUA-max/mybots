@@ -1,4 +1,4 @@
-importScripts("book.js");
+importScripts("engine.js", "book.js");
 
 const BUILTIN_BOOKS = [
   {id: "builtin:titans", name: "Titans", path: "books/titans.bin", size: 1938560},
@@ -139,6 +139,41 @@ function chooseRandomBookOrder(sources) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "engineTask") {
+    try {
+      const task = message.task;
+      const payload = message.payload || {};
+      let result;
+
+      if (task === "search") {
+        result = globalThis.__CMH_ENGINE__.search(
+          payload.position,
+          payload.side,
+          payload.maxDepth,
+          payload.nodeLimit,
+          payload.alternativeCount,
+          payload.castlingRights,
+          payload.epSquare
+        );
+      } else if (task === "gameState") {
+        result = globalThis.__CMH_ENGINE__.getGameState(
+          payload.position,
+          payload.side,
+          payload.castlingRights,
+          payload.epSquare
+        );
+      } else {
+        sendResponse({ok: false, error: "Unknown engine task."});
+        return;
+      }
+
+      sendResponse({ok: true, result});
+    } catch (error) {
+      sendResponse({ok: false, error: error.message || "Engine service worker error."});
+    }
+    return;
+  }
+
   if (message?.type === "clearBookCache") {
     clearBookCaches();
     sendResponse({ok: true});
