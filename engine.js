@@ -891,8 +891,8 @@
       return best;
     }
 
-    searchRoot(position, side, depth, alpha, beta, ply = 0) {
-      const moves = legalMoves(position, side, 15, null);
+    searchRoot(position, side, depth, alpha, beta, castlingRights = 15, epSquare = null, ply = 0) {
+      const moves = legalMoves(position, side, castlingRights, epSquare);
       if (!moves.length) return {
         complete: true,
         bestMove: null,
@@ -902,7 +902,7 @@
         failHigh: false
       };
 
-      const key = stateKey(position, side, 15, null);
+      const key = stateKey(position, side, castlingRights, epSquare);
       const entry = this.table.get(key);
       this.orderMoves(position, side, moves, 0, entry?.bestMove || null);
 
@@ -915,7 +915,7 @@
 
       for (const move of moves) {
         const nextPosition = applyMove(position, move);
-        const nextState = nextStateMetadata(position, side, 15, null, move);
+        const nextState = nextStateMetadata(position, side, castlingRights, epSquare, move);
 
         let score;
         if (first) {
@@ -1022,12 +1022,12 @@
           beta = Math.min(SEARCH_INF, bestScore + window);
         }
 
-        let iteration = this.searchRoot(position, side, depth, alpha, beta);
+        let iteration = this.searchRoot(position, side, depth, alpha, beta, castlingRights, epSquare);
         if (!iteration.complete && !this.stop) break;
 
         if (!this.stop && useAspiration && !finalAlternatives &&
             (iteration.failLow || iteration.failHigh)) {
-          iteration = this.searchRoot(position, side, depth, -SEARCH_INF, SEARCH_INF);
+          iteration = this.searchRoot(position, side, depth, -SEARCH_INF, SEARCH_INF, castlingRights, epSquare);
         }
 
         if (this.stop || !iteration.complete) break;
