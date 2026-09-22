@@ -102,6 +102,40 @@ body {
   line-height: 1.35;
 }
 
+.cmh-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.cmh-meta-item {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #242934;
+  border-radius: 8px;
+  background: #101319;
+}
+
+.cmh-meta-label {
+  display: block;
+  color: #697284;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.cmh-meta-value {
+  display: block;
+  margin-top: 3px;
+  color: #f5f7fb;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cmh-scan {
   width: 100%;
   margin: 12px 0;
