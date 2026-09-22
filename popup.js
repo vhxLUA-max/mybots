@@ -6,6 +6,7 @@
   const opponentRatingEl = document.querySelector("#cmh-opponent-rating");
   const gameModeEl = document.querySelector("#cmh-game-mode");
   const confidenceEl = document.querySelector("#cmh-confidence");
+  const engineRatingEl = document.querySelector("#cmh-engine-rating");
   const dotEl = document.querySelector("#cmh-dot");
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
@@ -52,6 +53,9 @@
     gameModeEl.textContent = response.gameMode || "Detecting...";
     confidenceEl.textContent = response.humanConfidence
       ? response.humanConfidence + "%"
+      : "—";
+    engineRatingEl.textContent = response.engineRating
+      ? "≈" + Number(response.engineRating).toLocaleString()
       : "—";
   }
 
