@@ -1,3 +1,5 @@
+const ext = globalThis.browser ?? globalThis.chrome;
+
 let worker=null;
 let ready=false;
 let activeSearch=null;
@@ -5,7 +7,7 @@ let activeSearch=null;
 function ensureWorker(){
   if(worker)return worker;
 
-  worker=new Worker(chrome.runtime.getURL("stockfish-19-lite-single.js"));
+  worker=new Worker(ext.runtime.getURL("stockfish-19-lite-single.js"));
   worker.addEventListener("error",error=>{
     ready=false;
     worker=null;
@@ -226,7 +228,7 @@ async function search(fen,depth=16,alternativeCount=4){
     activeSearch=null;
   }
 }
-chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+ext.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.target!=="offscreen"||message?.type!=="stockfishSearch")return;
 
   search(message.fen,message.depth,message.alternativeCount)
