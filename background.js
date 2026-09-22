@@ -161,7 +161,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               message.position,
               message.side,
               message.castlingRights || 0,
-              null,
+              message.epFile ?? null,
               8
             );
 
