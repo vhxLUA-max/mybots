@@ -140,9 +140,32 @@ function chooseRandomBookOrder(sources) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "engineTask") {
+    const task = message.task;
+    const payload = message.payload || {};
+
+    if (task === "maiaSearch") {
+      try {
+        if (!globalThis.__CMH_MAIA__) importScripts("maia3/maia3-engine.js");
+        globalThis.__CMH_MAIA__.search(
+          payload.position,
+          payload.side,
+          payload.alternativeCount,
+          payload.castlingRights,
+          payload.epSquare,
+          payload.selfElo,
+          payload.oppoElo
+        ).then(result => {
+          sendResponse({ok: true, result});
+        }).catch(error => {
+          sendResponse({ok: false, error: error.message || "Maia engine service worker error."});
+        });
+      } catch (error) {
+        sendResponse({ok: false, error: error.message || "Maia engine service worker error."});
+      }
+      return true;
+    }
+
     try {
-      const task = message.task;
-      const payload = message.payload || {};
       let result;
 
       if (task === "search") {
