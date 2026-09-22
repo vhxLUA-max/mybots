@@ -283,7 +283,9 @@ test("engine worker entry point references the shared engine", () => {
   assert.match(worker, /importScripts\("engine\.js"\)/);
   assert.match(worker, /self\.onmessage/);
   assert.doesNotThrow(() => new Function(worker));
-});\n\ntest("background exposes the engine service fallback", () => {
+});
+
+test("background exposes the engine service fallback", () => {
   const background = fs.readFileSync(require("node:path").join(root, "background.js"), "utf8");
   assert.match(background, /importScripts\("engine\.js", "book\.js"\)/);
   assert.match(background, /message\?\.type === "engineTask"/);
