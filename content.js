@@ -32,6 +32,7 @@
   let hidden = false;
   let showAlternatives = true;
   let humanMode = false;
+  let humanRating = null;
   let bookEnabled = true;
   let bookMode = "random";
   let engineDepth = 4;
@@ -60,6 +61,7 @@
       hidden,
       showAlternatives,
       humanMode,
+      humanRating,
       bookEnabled,
       bookMode,
       engineDepth,
@@ -223,6 +225,42 @@
     return Math.max(0.02, Math.min(0.98, 0.5 + 0.5 * Math.tanh(whiteScore / 400)));
   }
 
+  function parseRatingValue(raw) {
+    const match = String(raw || "").replace(/,/g, "").match(/\b(\d{3,4})\b/);
+    if (!match) return null;
+    const rating = Number(match[1]);
+    return rating >= 100 && rating <= 4000 ? rating : null;
+  }
+
+  function readPlayerRating() {
+    const selectors = [
+      "#board-layout-player-bottom [class*='rating']",
+      ".board-layout-player-bottom [class*='rating']",
+      ".player-component.player-bottom .user-tagline-rating",
+      ".player-bottom .user-tagline-rating",
+      ".player-bottom .rating"
+    ];
+
+    for (const selector of selectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const element of elements) {
+        const rating = parseRatingValue(element.textContent);
+        if (rating) return rating;
+      }
+    }
+
+    const candidates = [];
+    for (const element of document.querySelectorAll(".user-tagline-rating, .cc-user-rating")) {
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const rating = parseRatingValue(element.textContent);
+      if (rating) candidates.push({rating, top: rect.top});
+    }
+
+    candidates.sort((a, b) => b.top - a.top);
+    return candidates[0]?.rating ?? null;
+  }
+
   function chooseHumanCandidate(result) {
     const candidates = (result.alternatives?.length
       ? result.alternatives
@@ -230,18 +268,23 @@
 
     if (candidates.length <= 1) return candidates[0];
 
+    const rating = Math.max(800, Math.min(2800, Number(humanRating) || 1600));
+    const skill = (rating - 800) / 2000;
+    const lossScale = 90 - skill * 65;
+    const bookSpread = 3.6 - skill * 2.0;
     const bestScore = result.score;
-    const eligible = candidates.filter(move => result.book || bestScore - move.score <= 80);
-    const pool = eligible.length ? eligible : candidates;
-    const distinctPool = pool.length > 1
-      ? pool.filter(move => move !== candidates[0])
-      : pool;
-    const weighted = (distinctPool.length ? distinctPool : pool).map((move, index) => ({
-      move,
-      weight: result.book
-        ? 1 / (index + 1)
-        : Math.exp(-Math.max(0, bestScore - move.score) / 35) / (index + 1)
-    }));
+    const distinctPool = candidates.length > 1
+      ? candidates.filter(move => move !== candidates[0])
+      : candidates;
+    const weighted = distinctPool.map((move, index) => {
+      const loss = result.book ? 0 : Math.max(0, bestScore - move.score);
+      return {
+        move,
+        weight: result.book
+          ? Math.exp(-index / bookSpread)
+          : Math.exp(-loss / lossScale) / Math.pow(index + 1, 0.65)
+      };
+    });
     const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
     let threshold = Math.random() * total;
 
@@ -493,6 +536,7 @@
         lastBookName = "";
         castlingRights = 0;
         epSquare = null;
+        humanRating = null;
         stateInitialized = false;
         lastObservedPosition = null;
         const existingBoard = getBoardElement();
@@ -510,6 +554,9 @@
         setStatus("Local engine loading", "The built-in engine has not finished loading yet.");
         return stateResponse();
       }
+
+      const detectedRating = readPlayerRating();
+      if (detectedRating) humanRating = detectedRating;
 
       const position = readPosition(board);
       const pieceCount = position.filter(Boolean).length;
@@ -582,7 +629,7 @@
         setStatus(
           humanMode ? "Study candidates" : "Best " + moveName(result),
           humanMode
-            ? "Engine-assisted study mode"
+            ? ("Engine-assisted study mode" + (humanRating ? " • Rating " + humanRating : ""))
             : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
       }
