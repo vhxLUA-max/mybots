@@ -697,6 +697,7 @@
       }
 
       const inCheck = kingInCheck(position, side);
+      const standLimit = 12;
       const moves = legalMoves(position, side, castlingRights, epSquare);
       if (!moves.length) {
         if (inCheck) return -MATE_SCORE + ply;
@@ -704,6 +705,7 @@
       }
 
       const stand = side === "w" ? evaluate(position) : -evaluate(position);
+      if (ply >= standLimit) return stand;
       if (!inCheck) {
         if (stand >= beta) return stand;
         if (stand > alpha) alpha = stand;
@@ -718,7 +720,7 @@
         const givesCheck = this.isCheckingMove(position, side, move);
 
         if (!inCheck && capture && !promotion && !givesCheck && this.staticExchange(position, move) < 0) continue;
-        if (!inCheck && !capture && !promotion && !givesCheck) continue;
+        if (!inCheck && !capture && !promotion && (!givesCheck || ply >= 2)) continue;
 
         tactical.push(move);
       }
