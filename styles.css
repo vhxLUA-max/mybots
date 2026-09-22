@@ -89,14 +89,53 @@
   fill: #dc3232 !important;
 }
 
-.cmh-eval-bar-track {
-  fill: #0a0b0d;
-  stroke: rgba(255, 255, 255, 0.2);
-  stroke-width: 0.15;
+.cmh-eval-bar {
+  position: absolute;
+  top: 0;
+  left: -14px;
+  width: 10px;
+  height: 100%;
+  z-index: 101;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #0a0b0d;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.cmh-eval-bar-black {
+  position: absolute;
+  inset: 0;
+  background: #0a0b0d;
 }
 
 .cmh-eval-bar-white {
-  fill: #f5f7fb;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: #f5f7fb;
+}
+
+.cmh-eval-bar.cmh-flipped .cmh-eval-bar-white {
+  bottom: auto;
+  top: 0;
+}
+
+.cmh-eval-bar-score {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #f5f7fb;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.cmh-eval-bar.cmh-eval-book {
+  background: #2a2b2f;
 }
 
 .cmh-eval-score {
