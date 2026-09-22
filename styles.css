@@ -21,45 +21,57 @@
 }
 
 .cmh-arrow-layer .cmh-arrow.cmh-best {
-  color: #39e56b;
-  stroke: #39e56b !important;
+  color: #14a050;
+  stroke: #14a050 !important;
 }
 
 .cmh-arrow-layer .cmh-arrow.cmh-good {
-  color: #43b7ff;
-  stroke: #43b7ff !important;
+  color: #5abe78;
+  stroke: #5abe78 !important;
   stroke-width: 1.7;
   opacity: 0.82;
 }
 
 .cmh-arrow-layer .cmh-arrow.cmh-ok {
-  color: #f5c451;
-  stroke: #f5c451 !important;
+  color: #f0aa28;
+  stroke: #f0aa28 !important;
   stroke-width: 1.45;
   opacity: 0.66;
 }
 
 .cmh-arrow-layer .cmh-arrow.cmh-bad {
-  color: #ff625f;
-  stroke: #ff625f !important;
+  color: #dc3232;
+  stroke: #dc3232 !important;
   stroke-width: 1.2;
   opacity: 0.52;
 }
 
 .cmh-arrow-layer .cmh-arrow-head.cmh-best {
-  fill: #39e56b !important;
+  fill: #14a050 !important;
 }
 
 .cmh-arrow-layer .cmh-arrow-head.cmh-good {
-  fill: #43b7ff !important;
+  fill: #5abe78 !important;
 }
 
 .cmh-arrow-layer .cmh-arrow-head.cmh-ok {
-  fill: #f5c451 !important;
+  fill: #f0aa28 !important;
 }
 
 .cmh-arrow-layer .cmh-arrow-head.cmh-bad {
-  fill: #ff625f !important;
+  fill: #dc3232 !important;
+}
+
+.cmh-arrow-layer .cmh-arrow-head.cmh-human {
+  fill: #f0aa28 !important;
+}
+
+.cmh-arrow-layer .cmh-arrow-head.cmh-mistake {
+  fill: #f07828 !important;
+}
+
+.cmh-arrow-layer .cmh-arrow-head.cmh-blunder {
+  fill: #dc3232 !important;
 }
 
 .cmh-eval-bar-track {
