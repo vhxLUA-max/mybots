@@ -19,8 +19,6 @@
   const dashboardOpenButton = document.querySelector("#cmh-dashboard-open");
   const analysisSourceEl = document.querySelector("#cmh-analysis-source");
   const analysisEvalEl = document.querySelector("#cmh-analysis-eval");
-  const analysisDepthEl = document.querySelector("#cmh-analysis-depth");
-  const analysisNodesEl = document.querySelector("#cmh-analysis-nodes");
   const analysisPvEl = document.querySelector("#cmh-analysis-pv");
   const analysisBookEl = document.querySelector("#cmh-analysis-book");
   const candidateListEl = document.querySelector("#cmh-candidate-list");
