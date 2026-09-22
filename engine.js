@@ -37,8 +37,8 @@
     return target && sideOf(target) !== side;
   }
 
-  function pushMove(moves, from, to, promotion = null, castle = false) {
-    moves.push({ from, to, promotion, castle });
+  function pushMove(moves, from, to, promotion = null, castle = false, enPassant = false) {
+    moves.push({ from, to, promotion, castle, enPassant });
   }
 
   function attacked(position, target, bySide) {
@@ -101,6 +101,11 @@
     next[move.from] = null;
     next[move.to] = move.promotion ? colorPiece(move.promotion, sideOf(piece)) : piece;
 
+    if (move.enPassant) {
+      const capturedPawn = move.to + (piece === "P" ? -8 : 8);
+      next[capturedPawn] = null;
+    }
+
     if (move.castle) {
       const c = coords(move.to);
       const rookFrom = c.file === 6 ? square(7, c.rank) : square(0, c.rank);
@@ -112,7 +117,46 @@
     return next;
   }
 
-  function addPawnMoves(position, moves, from, side) {
+  function nextStateMetadata(position, side, castlingRights, epSquare, move) {
+    let nextCastlingRights = castlingRights;
+    const piece = position[move.from];
+    const captured = move.enPassant ? null : position[move.to];
+
+    if (piece === "K") nextCastlingRights &= ~3;
+    if (piece === "k") nextCastlingRights &= ~12;
+    if (piece === "R") {
+      if (move.from === square(7, 1)) nextCastlingRights &= ~1;
+      if (move.from === square(0, 1)) nextCastlingRights &= ~2;
+    }
+    if (piece === "r") {
+      if (move.from === square(7, 8)) nextCastlingRights &= ~4;
+      if (move.from === square(0, 8)) nextCastlingRights &= ~8;
+    }
+    if (captured === "R") {
+      if (move.to === square(7, 1)) nextCastlingRights &= ~1;
+      if (move.to === square(0, 1)) nextCastlingRights &= ~2;
+    }
+    if (captured === "r") {
+      if (move.to === square(7, 8)) nextCastlingRights &= ~4;
+      if (move.to === square(0, 8)) nextCastlingRights &= ~8;
+    }
+
+    let nextEpSquare = null;
+    if (piece?.toUpperCase() === "P" && Math.abs(move.to - move.from) === 16) {
+      nextEpSquare = (move.from + move.to) >> 1;
+    }
+
+    return {
+      castlingRights: nextCastlingRights,
+      epSquare: nextEpSquare
+    };
+  }
+
+  function stateKey(position, side, castlingRights, epSquare) {
+    return position.join("") + "|" + side + "|" + castlingRights + "|" + (epSquare ?? -1);
+  }
+
+  function addPawnMoves(position, moves, from, side, epSquare = null) {
     const { file, rank } = coords(from);
     const dir = side === "w" ? 1 : -1;
     const lastRank = side === "w" ? 8 : 1;
@@ -143,11 +187,17 @@
         } else {
           pushMove(moves, from, to);
         }
+      } else if (epSquare === to && !position[to]) {
+        const capturedPawnSquare = to + (side === "w" ? -8 : 8);
+        const enemyPawn = colorPiece("P", side === "w" ? "b" : "w");
+        if (position[capturedPawnSquare] === enemyPawn) {
+          pushMove(moves, from, to, null, false, true);
+        }
       }
     }
   }
 
-  function generatePseudo(position, side) {
+  function generatePseudo(position, side, castlingRights = 15, epSquare = null) {
     const moves = [];
     for (let from = 0; from < 64; from++) {
       const piece = position[from];
@@ -156,7 +206,7 @@
       const { file, rank } = coords(from);
 
       if (type === "P") {
-        addPawnMoves(position, moves, from, side);
+        addPawnMoves(position, moves, from, side, epSquare);
         continue;
       }
 
@@ -190,14 +240,18 @@
         const enemy = side === "w" ? "b" : "w";
         const backRank = side === "w" ? 1 : 8;
         if (rank === backRank && !kingInCheck(position, side)) {
+          const kingSideRight = side === "w" ? 1 : 4;
+          const queenSideRight = side === "w" ? 2 : 8;
           const kingSideRook = position[square(7, backRank)] === colorPiece("R", side);
-          if (kingSideRook && !position[square(5, backRank)] && !position[square(6, backRank)] &&
+          if ((castlingRights & kingSideRight) && kingSideRook &&
+              !position[square(5, backRank)] && !position[square(6, backRank)] &&
               !attacked(position, square(5, backRank), enemy) && !attacked(position, square(6, backRank), enemy)) {
             pushMove(moves, from, square(6, backRank), null, true);
           }
 
           const queenSideRook = position[square(0, backRank)] === colorPiece("R", side);
-          if (queenSideRook && !position[square(1, backRank)] && !position[square(2, backRank)] && !position[square(3, backRank)] &&
+          if ((castlingRights & queenSideRight) && queenSideRook &&
+              !position[square(1, backRank)] && !position[square(2, backRank)] && !position[square(3, backRank)] &&
               !attacked(position, square(3, backRank), enemy) && !attacked(position, square(2, backRank), enemy)) {
             pushMove(moves, from, square(2, backRank), null, true);
           }
@@ -230,9 +284,9 @@
     return moves;
   }
 
-  function legalMoves(position, side) {
+  function legalMoves(position, side, castlingRights = 15, epSquare = null) {
     const result = [];
-    for (const move of generatePseudo(position, side)) {
+    for (const move of generatePseudo(position, side, castlingRights, epSquare)) {
       const next = applyMove(position, move);
       if (!kingInCheck(next, side)) result.push(move);
     }
@@ -355,12 +409,12 @@
     }
 
     isCapture(position, move) {
-      return Boolean(position[move.to]);
+      return Boolean(position[move.to]) || Boolean(move.enPassant);
     }
 
-    getGameState(position, side) {
+    getGameState(position, side, castlingRights = 15, epSquare = null) {
       const inCheck = kingInCheck(position, side);
-      const hasLegalMoves = legalMoves(position, side).length > 0;
+      const hasLegalMoves = legalMoves(position, side, castlingRights, epSquare).length > 0;
       if (!hasLegalMoves) return inCheck ? "checkmate" : "stalemate";
       return inCheck ? "check" : "playing";
     }
@@ -400,7 +454,7 @@
       });
     }
 
-    quiescence(position, side, alpha, beta) {
+    quiescence(position, side, alpha, beta, castlingRights, epSquare) {
       if (++this.nodes >= this.nodeLimit) {
         this.stop = true;
         return side === "w" ? evaluate(position) : -evaluate(position);
@@ -410,12 +464,21 @@
       if (stand >= beta) return stand;
       if (stand > alpha) alpha = stand;
 
-      const captures = legalMoves(position, side).filter(move => this.isCapture(position, move) || move.promotion);
+      const captures = legalMoves(position, side, castlingRights, epSquare).filter(move => this.isCapture(position, move) || move.promotion);
       this.orderMoves(position, side, captures, 0);
 
       const nextSide = side === "w" ? "b" : "w";
       for (const move of captures) {
-        const score = -this.quiescence(applyMove(position, move), nextSide, -beta, -alpha);
+        const nextPosition = applyMove(position, move);
+        const nextState = nextStateMetadata(position, side, castlingRights, epSquare, move);
+        const score = -this.quiescence(
+          nextPosition,
+          nextSide,
+          -beta,
+          -alpha,
+          nextState.castlingRights,
+          nextState.epSquare
+        );
         if (this.stop) return score;
         if (score >= beta) return score;
         if (score > alpha) alpha = score;
@@ -423,13 +486,13 @@
       return alpha;
     }
 
-    negamax(position, side, depth, alpha, beta, ply = 0) {
+    negamax(position, side, depth, alpha, beta, ply = 0, castlingRights = 15, epSquare = null) {
       if (++this.nodes >= this.nodeLimit) {
         this.stop = true;
         return side === "w" ? evaluate(position) : -evaluate(position);
       }
 
-      const key = position.join("") + "|" + side;
+      const key = stateKey(position, side, castlingRights, epSquare);
       const originalAlpha = alpha;
       const entry = this.table.get(key);
 
@@ -439,13 +502,13 @@
         if (entry.flag === "UPPER" && entry.score <= alpha) return entry.score;
       }
 
-      const moves = legalMoves(position, side);
+      const moves = legalMoves(position, side, castlingRights, epSquare);
       if (!moves.length) {
         if (kingInCheck(position, side)) return -MATE_SCORE + ply;
         return 0;
       }
 
-      if (depth === 0) return this.quiescence(position, side, alpha, beta);
+      if (depth === 0) return this.quiescence(position, side, alpha, beta, castlingRights, epSquare);
 
       this.orderMoves(position, side, moves, ply, entry?.bestMove || null);
 
@@ -457,6 +520,7 @@
       for (let index = 0; index < moves.length; index++) {
         const move = moves[index];
         const nextPosition = applyMove(position, move);
+        const nextState = nextStateMetadata(position, side, castlingRights, epSquare, move);
         const quiet = !this.isCapture(position, move) && !move.promotion && !move.castle;
         let searchDepth = depth - 1;
 
@@ -464,12 +528,39 @@
 
         let score;
         if (first) {
-          score = -this.negamax(nextPosition, nextSide, depth - 1, -beta, -alpha, ply + 1);
+          score = -this.negamax(
+            nextPosition,
+            nextSide,
+            depth - 1,
+            -beta,
+            -alpha,
+            ply + 1,
+            nextState.castlingRights,
+            nextState.epSquare
+          );
           first = false;
         } else {
-          score = -this.negamax(nextPosition, nextSide, searchDepth, -alpha - 1, -alpha, ply + 1);
+          score = -this.negamax(
+            nextPosition,
+            nextSide,
+            searchDepth,
+            -alpha - 1,
+            -alpha,
+            ply + 1,
+            nextState.castlingRights,
+            nextState.epSquare
+          );
           if (!this.stop && score > alpha) {
-            score = -this.negamax(nextPosition, nextSide, depth - 1, -beta, -alpha, ply + 1);
+            score = -this.negamax(
+              nextPosition,
+              nextSide,
+              depth - 1,
+              -beta,
+              -alpha,
+              ply + 1,
+              nextState.castlingRights,
+              nextState.epSquare
+            );
           }
         }
 
@@ -499,7 +590,7 @@
       return best;
     }
 
-    search(position, side, maxDepth = 4, nodeLimit = 40000, alternativeCount = 4) {
+    search(position, side, maxDepth = 4, nodeLimit = 40000, alternativeCount = 4, castlingRights = 15, epSquare = null) {
       this.nodes = 0;
       this.nodeLimit = nodeLimit;
       this.table.clear();
@@ -512,10 +603,10 @@
       let reachedDepth = 0;
 
       for (let depth = 1; depth <= maxDepth; depth++) {
-        const moves = legalMoves(position, side);
+        const moves = legalMoves(position, side, castlingRights, epSquare);
         if (!moves.length) break;
 
-        const rootEntry = this.table.get(position.join("") + "|" + side);
+        const rootEntry = this.table.get(stateKey(position, side, castlingRights, epSquare));
         this.orderMoves(position, side, moves, 0, rootEntry?.bestMove || bestMove);
 
         const scoredMoves = [];
@@ -524,14 +615,43 @@
         const nextSide = side === "w" ? "b" : "w";
 
         for (const move of moves) {
+          const nextPosition = applyMove(position, move);
+          const nextState = nextStateMetadata(position, side, castlingRights, epSquare, move);
           let score = first
-            ? -this.negamax(applyMove(position, move), nextSide, depth - 1, -MATE_SCORE, MATE_SCORE, 1)
-            : -this.negamax(applyMove(position, move), nextSide, depth - 1, -alpha - 1, -alpha, 1);
+            ? -this.negamax(
+              nextPosition,
+              nextSide,
+              depth - 1,
+              -MATE_SCORE,
+              MATE_SCORE,
+              1,
+              nextState.castlingRights,
+              nextState.epSquare
+            )
+            : -this.negamax(
+              nextPosition,
+              nextSide,
+              depth - 1,
+              -alpha - 1,
+              -alpha,
+              1,
+              nextState.castlingRights,
+              nextState.epSquare
+            );
 
           if (this.stop) break;
 
           if (!first && score > alpha) {
-            score = -this.negamax(applyMove(position, move), nextSide, depth - 1, -MATE_SCORE, -alpha, 1);
+            score = -this.negamax(
+              nextPosition,
+              nextSide,
+              depth - 1,
+              -MATE_SCORE,
+              -alpha,
+              1,
+              nextState.castlingRights,
+              nextState.epSquare
+            );
             if (this.stop) break;
           }
 
@@ -547,7 +667,7 @@
         bestMove = scoredMoves[0].move;
         bestScore = scoredMoves[0].score;
         reachedDepth = depth;
-        this.table.set(position.join("") + "|" + side, {
+        this.table.set(stateKey(position, side, castlingRights, epSquare), {
           depth,
           score: bestScore,
           flag: "EXACT",
