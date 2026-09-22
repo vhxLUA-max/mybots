@@ -617,8 +617,10 @@
         for (const move of moves) {
           const nextPosition = applyMove(position, move);
           const nextState = nextStateMetadata(position, side, castlingRights, epSquare, move);
-          let score = first
-            ? -this.negamax(
+          let score;
+
+          if (alternativeCount > 1 && depth === maxDepth) {
+            score = -this.negamax(
               nextPosition,
               nextSide,
               depth - 1,
@@ -627,33 +629,45 @@
               1,
               nextState.castlingRights,
               nextState.epSquare
-            )
-            : -this.negamax(
-              nextPosition,
-              nextSide,
-              depth - 1,
-              -alpha - 1,
-              -alpha,
-              1,
-              nextState.castlingRights,
-              nextState.epSquare
             );
+          } else {
+            score = first
+              ? -this.negamax(
+                nextPosition,
+                nextSide,
+                depth - 1,
+                -MATE_SCORE,
+                MATE_SCORE,
+                1,
+                nextState.castlingRights,
+                nextState.epSquare
+              )
+              : -this.negamax(
+                nextPosition,
+                nextSide,
+                depth - 1,
+                -alpha - 1,
+                -alpha,
+                1,
+                nextState.castlingRights,
+                nextState.epSquare
+              );
+
+            if (!this.stop && !first && score > alpha) {
+              score = -this.negamax(
+                nextPosition,
+                nextSide,
+                depth - 1,
+                -MATE_SCORE,
+                -alpha,
+                1,
+                nextState.castlingRights,
+                nextState.epSquare
+              );
+            }
+          }
 
           if (this.stop) break;
-
-          if (!first && score > alpha) {
-            score = -this.negamax(
-              nextPosition,
-              nextSide,
-              depth - 1,
-              -MATE_SCORE,
-              -alpha,
-              1,
-              nextState.castlingRights,
-              nextState.epSquare
-            );
-            if (this.stop) break;
-          }
 
           scoredMoves.push({ move, score });
           if (score > alpha) alpha = score;
