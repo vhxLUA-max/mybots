@@ -111,9 +111,7 @@ async function search(fen,depth=16,alternativeCount=4){
   const currentWorker=ensureWorker();
   const lines=new Map();
 
-  return await new Promise((resolve,reject)=>{
-    activeSearch={resolve,reject};
-
+  const completion=new Promise((resolve,reject)=>{
     const handler=event=>{
       const line=typeof event.data==="string"
         ?event.data.trim()
@@ -122,19 +120,22 @@ async function search(fen,depth=16,alternativeCount=4){
       if(!line)return;
 
       if(line.startsWith("info "))parseInfo(line,lines);
-
-      if(line.startsWith("bestmove ")){
-        const bestmove=line.split(/\s+/)[1]||"";
-        activeSearch.resolve(bestmove);
-      }
+      if(line.startsWith("bestmove "))resolve(line.split(/\\s+/)[1]||"");
     };
 
     const timeout=setTimeout(()=>{
       try{currentWorker.postMessage("stop");}catch{}
-      activeSearch.reject(new Error("Stockfish search timed out."));
+      reject(new Error("Stockfish search timed out."));
     },30000);
 
     currentWorker.addEventListener("message",handler);
+    activeSearch={
+      reject,
+      cleanup:()=>{
+        clearTimeout(timeout);
+        currentWorker.removeEventListener("message",handler);
+      }
+    };
 
     (async()=>{
       try{
@@ -147,97 +148,84 @@ async function search(fen,depth=16,alternativeCount=4){
 
         currentWorker.postMessage("position fen "+fen);
         currentWorker.postMessage("go depth "+Math.max(1,Math.min(30,Number(depth)||16)));
-
-        const bestmove=await new Promise((resolveBest,rejectBest)=>{
-          const oldResolve=activeSearch.resolve;
-          const oldReject=activeSearch.reject;
-          activeSearch.resolve=value=>{
-            oldResolve(value);
-            resolveBest(value);
-          };
-          activeSearch.reject=error=>{
-            oldReject(error);
-            rejectBest(error);
-          };
-        });
-
-        const entries=[...lines.values()].sort((a,b)=>a.multipv-b.multipv);
-        const bestInfo=entries[0]||null;
-        const fallback=parseMove(bestmove);
-
-        if(!fallback){
-          resolve({
-            gameState:"no-move",
-            from:null,
-            to:null,
-            promotion:null,
-            score:0,
-            mate:null,
-            pv:[],
-            depth:bestInfo?.depth||Number(depth)||0,
-            nodes:bestInfo?.nodes||0,
-            alternatives:[],
-            stockfish:true,
-            model:"Stockfish 19 Lite Single"
-          });
-          return;
-        }
-
-        const baseScore=bestInfo?.score??0;
-        const alternatives=entries.slice(0,8).map((entry,index)=>{
-          const firstMove=entry.pv[0]||(index===0?fallback:null);
-          if(!firstMove)return null;
-
-          return {
-            ...firstMove,
-            score:entry.score,
-            loss:Math.max(0,baseScore-entry.score),
-            mate:entry.mate,
-            rank:index+1,
-            depth:entry.depth,
-            nodes:entry.nodes
-          };
-        }).filter(Boolean);
-
-        if(!alternatives.length){
-          alternatives.push({
-            ...fallback,
-            score:baseScore,
-            loss:0,
-            mate:bestInfo?.mate??null,
-            rank:1,
-            depth:bestInfo?.depth||Number(depth)||0,
-            nodes:bestInfo?.nodes||0
-          });
-        }
-
-        const best=alternatives[0];
-
-        resolve({
-          gameState:"playing",
-          from:best.from,
-          to:best.to,
-          promotion:best.promotion,
-          score:best.score,
-          mate:best.mate??null,
-          pv:bestInfo?.pv||[fallback],
-          depth:bestInfo?.depth||Number(depth)||0,
-          nodes:bestInfo?.nodes||0,
-          alternatives,
-          stockfish:true,
-          model:"Stockfish 19 Lite Single"
-        });
       }catch(error){
         reject(error);
-      }finally{
-        clearTimeout(timeout);
-        currentWorker.removeEventListener("message",handler);
-        activeSearch=null;
       }
     })();
   });
-}
 
+  try{
+    const bestmove=await completion;
+    const entries=[...lines.values()].sort((a,b)=>a.multipv-b.multipv);
+    const bestInfo=entries[0]||null;
+    const fallback=parseMove(bestmove);
+
+    if(!fallback){
+      return {
+        gameState:"no-move",
+        from:null,
+        to:null,
+        promotion:null,
+        score:0,
+        mate:null,
+        pv:[],
+        depth:bestInfo?.depth||Number(depth)||0,
+        nodes:bestInfo?.nodes||0,
+        alternatives:[],
+        stockfish:true,
+        model:"Stockfish 19 Lite Single"
+      };
+    }
+
+    const baseScore=bestInfo?.score??0;
+    const alternatives=entries.slice(0,8).map((entry,index)=>{
+      const firstMove=entry.pv[0]||(index===0?fallback:null);
+      if(!firstMove)return null;
+
+      return {
+        ...firstMove,
+        score:entry.score,
+        loss:Math.max(0,baseScore-entry.score),
+        mate:entry.mate,
+        rank:index+1,
+        depth:entry.depth,
+        nodes:entry.nodes
+      };
+    }).filter(Boolean);
+
+    if(!alternatives.length){
+      alternatives.push({
+        ...fallback,
+        score:baseScore,
+        loss:0,
+        mate:bestInfo?.mate??null,
+        rank:1,
+        depth:bestInfo?.depth||Number(depth)||0,
+        nodes:bestInfo?.nodes||0
+      });
+    }
+
+    const best=alternatives[0];
+
+    return {
+      gameState:"playing",
+      from:best.from,
+      to:best.to,
+      promotion:best.promotion,
+      score:best.score,
+      mate:best.mate??null,
+      pv:bestInfo?.pv||[fallback],
+      depth:bestInfo?.depth||Number(depth)||0,
+      nodes:bestInfo?.nodes||0,
+      alternatives,
+      stockfish:true,
+      model:"Stockfish 19 Lite Single"
+    };
+  }finally{
+    activeSearch?.cleanup?.();
+    activeSearch=null;
+  }
+}
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.target!=="offscreen"||message?.type!=="stockfishSearch")return;
 
