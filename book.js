@@ -863,5 +863,5 @@ var CMH_BOOK = (() => {
     }));
   }
 
-  return {lookup};
+  return {lookup, hash};
 })();
