@@ -69,3 +69,37 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+.cmh-dashboard .cmh-analysis-card {
+  margin-bottom: 18px;
+}
+
+.cmh-dashboard .cmh-analysis-eval {
+  font-size: 26px;
+}
+
+.cmh-dashboard .cmh-analysis-metrics {
+  grid-template-columns: 1fr 1fr;
+}
+
+.cmh-dashboard .cmh-candidate-row {
+  grid-template-columns: 80px minmax(90px, 1fr) 90px 70px;
+  padding: 8px 9px;
+}
+
+.cmh-dashboard .cmh-candidate-move,
+.cmh-dashboard .cmh-candidate-eval,
+.cmh-dashboard .cmh-candidate-loss {
+  font-size: 10px;
+}
+
+.cmh-dashboard .cmh-candidate-category {
+  font-size: 9px;
+}
+
+@media (max-width: 520px) {
+  .cmh-dashboard .cmh-candidate-row {
+    grid-template-columns: 64px minmax(70px, 1fr) 72px 60px;
+  }
+}
