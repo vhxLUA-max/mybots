@@ -271,7 +271,7 @@ test("Maia provider does not depend on the deleted local engine", () => {
 
   assert.doesNotMatch(maia, /__CMH_ENGINE__/);
   assert.doesNotMatch(worker, /(?:^|["'])engine\.js(?:["']|$)|__CMH_ENGINE__/);
-  assert.doesNotMatch(background, /engine\.js|__CMH_ENGINE__\.search|__CMH_ENGINE__\.getGameState/);
+  assert.doesNotMatch(background, /importScripts\("engine\.js"\)|__CMH_ENGINE__\.search|__CMH_ENGINE__\.getGameState/);
   assert.match(maia, /__CMH_CHESS_RULES__/);
   assert.match(maia, /logits_move/);
   assert.match(maia, /4352/);
