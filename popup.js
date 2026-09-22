@@ -97,7 +97,7 @@
     analysisSourceEl.textContent = source || "No analysis";
     analysisSourceEl.className = "cmh-analysis-source" + (source === "Opening book" ? " cmh-book-source" : source ? " cmh-engine-source" : "");
     analysisEvalEl.textContent = response.analysisEvaluation || "—";
-    analysisDepthEl.textContent = response.analysisDepth ? "D" + response.analysisDepth : "—";
+    analysisDepthEl.textContent = response.analysisDepth ? depthLabel(response.analysisDepth) : "—";
     analysisNodesEl.textContent = response.analysisNodes
       ? Number(response.analysisNodes).toLocaleString()
       : "—";
