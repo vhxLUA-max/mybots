@@ -35,6 +35,7 @@
   let humanRating = null;
   let opponentRating = null;
   let gameMode = null;
+  let humanConfidence = null;
   let bookEnabled = true;
   let bookMode = "random";
   let engineDepth = 4;
@@ -66,6 +67,7 @@
       humanRating,
       opponentRating,
       gameMode,
+      humanConfidence,
       bookEnabled,
       bookMode,
       engineDepth,
@@ -227,6 +229,17 @@
   function evaluationPercent(score, side) {
     const whiteScore = side === "w" ? score : -score;
     return Math.max(0.02, Math.min(0.98, 0.5 + 0.5 * Math.tanh(whiteScore / 400)));
+  }
+
+  function estimateHumanConfidence(result, side, board) {
+    if (result.book) return null;
+    const userSide = getOrientation(board).flipped ? "b" : "w";
+    const userScore = userSide === side ? result.score : -result.score;
+    if (userScore >= 990000) return 95;
+    if (userScore <= -990000) return 5;
+    const ratingEdge = Math.max(-300, Math.min(300, (Number(humanRating) || 1600) - (Number(opponentRating) || 1600)));
+    const adjustedScore = userScore + ratingEdge * 0.08;
+    return Math.max(5, Math.min(95, Math.round(50 + 45 * Math.tanh(adjustedScore / 350))));
   }
 
   function parseRatingValue(raw) {
@@ -569,7 +582,7 @@
       label.setAttribute("y", String(labelY));
       label.setAttribute("text-anchor", "middle");
       label.setAttribute("dominant-baseline", "middle");
-      label.textContent = humanMode ? "" : formatEvaluation(move.score, side, result.book);
+      label.textContent = formatEvaluation(move.score, side, result.book);
       label.classList.add("cmh-eval-label", "cmh-" + category);
       label.style.setProperty("fill", color, "important");
       svg.appendChild(label);
@@ -638,6 +651,7 @@
         humanRating = null;
         opponentRating = null;
         gameMode = null;
+        humanConfidence = null;
         stateInitialized = false;
         lastObservedPosition = null;
         const existingBoard = getBoardElement();
@@ -717,6 +731,7 @@
         return stateResponse();
       }
 
+      humanConfidence = humanMode ? estimateHumanConfidence(result, side, board) : null;
       const displayResult = humanMode
         ? {...result, humanMove: chooseHumanCandidate(result)}
         : result;
@@ -737,7 +752,8 @@
             ? ("Engine-assisted study mode" +
               (humanRating ? " • Rating " + humanRating : "") +
               (opponentRating ? " • Opponent " + opponentRating : "") +
-              (gameMode ? " • " + gameMode : ""))
+              (gameMode ? " • " + gameMode : "") +
+              (humanConfidence ? " • Confidence " + humanConfidence + "%" : ""))
             : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
       }
