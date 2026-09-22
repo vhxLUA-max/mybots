@@ -1,6 +1,6 @@
 # Chess Move Helper
 
-Chess Move Helper is a Chrome Manifest V3 extension for analyzing Chess.com positions locally.
+Chess Move Helper is a cross-browser chess analysis extension for analyzing Chess.com positions locally.
 
 It combines a local chess engine with Polyglot opening-book support and displays recommended moves directly on Chess.com.
 
@@ -16,16 +16,93 @@ It combines a local chess engine with Polyglot opening-book support and displays
 - Castling and en-passant state tracking for local analysis
 - No external engine service is required for position analysis
 
-## Installation
+## Browser Compatibility
+
+The project is designed around the WebExtension model and targets major browsers that support the required extension APIs.
+
+The current repository uses a Manifest V3 package and is directly suited to Chromium-based desktop browsers such as:
+
+- Google Chrome
+- Microsoft Edge
+- Brave
+- Opera
+- Other Chromium-based browsers with compatible extension APIs
+
+Firefox uses the WebExtension model as well, but browser-specific API and manifest differences may require a Firefox-compatible build before this exact package can be installed there.
+
+Browser compatibility should be tested on the target browser before distribution. Chromium-based browsers generally share the same extension APIs, while some browser-specific differences can still exist.
+
+## PC Installation
+
+### Chrome
 
 1. Download or clone this repository.
-2. Open `chrome://extensions` in Chrome.
+2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
-4. Select **Load unpacked**.
-5. Choose the repository folder.
-6. Open a Chess.com board and open the extension.
+4. Click **Load unpacked**.
+5. Select the repository folder.
+6. Pin **Chess Move Helper** from the extensions menu.
+7. Open a Chess.com board.
+8. Open the extension and use **Analyze Position**.
 
-The extension popup remains available from the Chrome toolbar. Use **Full Dashboard** in the popup to open the larger dashboard page.
+Chrome officially supports installing extensions on computers; extensions cannot be installed as normal browser extensions in Chrome on mobile devices. citeturn160471search5turn160471search6
+
+### Microsoft Edge
+
+1. Download or clone this repository.
+2. Open `edge://extensions`.
+3. Enable **Developer mode**.
+4. Choose **Load unpacked**.
+5. Select the repository folder.
+6. Open a Chess.com board and use the extension.
+
+Edge supports Chromium-compatible extensions, including extensions obtained from the Chrome Web Store when the required option is enabled. citeturn160471search7turn160471search12
+
+### Brave, Opera, and other Chromium browsers
+
+1. Open the browser's extension-management page.
+2. Enable its developer or developer-mode option.
+3. Choose **Load unpacked** or the equivalent local-extension option.
+4. Select the repository folder.
+5. Open Chess.com and launch the extension.
+
+The exact menu names can differ between browsers.
+
+## Mobile Installation
+
+Mobile extension support depends on the browser.
+
+### Android: Firefox
+
+Firefox for Android supports extensions/add-ons through its Add-ons Manager and the Firefox Add-ons website. citeturn160471search0turn160471search3
+
+For a published Firefox-compatible version:
+
+1. Install **Firefox for Android**.
+2. Open the Firefox menu.
+3. Tap **Add-ons** or **Extensions**.
+4. Find the compatible Chess Move Helper add-on.
+5. Tap **+** to install it.
+6. Open Chess.com and use the extension.
+
+The current GitHub repository is an unpacked desktop extension package. A Firefox-specific, published build may be required for installation on Firefox for Android.
+
+### Android: Chrome
+
+Chrome for Android does not support installing extensions directly. Google documents extension installation as a desktop feature, while Chrome's mobile help states that extensions and themes cannot be installed on mobile devices. citeturn160471search5turn160471search6
+
+### iPhone / iPad
+
+This repository is not directly installable as an unpacked extension in Safari on iPhone or iPad. A Safari Web Extension build and the corresponding Apple packaging/distribution process would be required.
+
+## Dashboard
+
+The extension includes two interfaces:
+
+- **Popup**: available from the browser toolbar.
+- **Full Dashboard**: opened from the popup with **Full Dashboard**.
+
+The popup remains available even when the dashboard is used.
 
 ## Usage
 
@@ -44,7 +121,7 @@ To load a custom opening book, use a valid Polyglot `.bin` file from the popup o
 
 | File | Purpose |
 | --- | --- |
-| `manifest.json` | Chrome extension configuration |
+| `manifest.json` | Browser extension configuration |
 | `background.js` | Background service worker and opening-book management |
 | `book.js` | Polyglot opening-book lookup logic |
 | `engine.js` | Local chess move generation, evaluation, and search |
@@ -58,9 +135,10 @@ To load a custom opening book, use a valid Polyglot `.bin` file from the popup o
 
 This project is a browser extension that interacts with Chess.com pages. Chess.com can change its page structure or behavior, which may affect compatibility.
 
+Support for a specific browser is determined by that browser's extension API and manifest compatibility. Chromium-based browsers generally share the same extension APIs, but browser-specific differences can still require adjustments. citeturn160471search11
+
 Opening-book files may have licensing terms separate from the project source code. Check the terms of any bundled or custom book files before redistributing them.
 
 ## License
 
 The project source code is released under the MIT License. See [LICENSE](LICENSE).
-
