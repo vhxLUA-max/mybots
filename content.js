@@ -33,6 +33,7 @@
   let showAlternatives = true;
   let humanMode = false;
   let humanRating = null;
+  let opponentRating = null;
   let gameMode = null;
   let bookEnabled = true;
   let bookMode = "random";
@@ -63,6 +64,7 @@
       showAlternatives,
       humanMode,
       humanRating,
+      opponentRating,
       gameMode,
       bookEnabled,
       bookMode,
@@ -263,6 +265,35 @@
     return candidates[0]?.rating ?? null;
   }
 
+  function readOpponentRating() {
+    const selectors = [
+      "#board-layout-player-top [class*='rating']",
+      ".board-layout-player-top [class*='rating']",
+      ".player-component.player-top .user-tagline-rating",
+      ".player-top .user-tagline-rating",
+      ".player-top .rating"
+    ];
+
+    for (const selector of selectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const element of elements) {
+        const rating = parseRatingValue(element.textContent);
+        if (rating) return rating;
+      }
+    }
+
+    const candidates = [];
+    for (const element of document.querySelectorAll(".user-tagline-rating, .cc-user-rating")) {
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const rating = parseRatingValue(element.textContent);
+      if (rating) candidates.push({rating, top: rect.top});
+    }
+
+    candidates.sort((a, b) => a.top - b.top);
+    return candidates[0]?.rating ?? null;
+  }
+
   function classifyGameMode(raw) {
     const value = String(raw || "").toLowerCase();
     if (/\bbullet\b/.test(value)) return "Bullet";
@@ -316,22 +347,49 @@
     if (candidates.length <= 1) return candidates[0];
 
     const rating = Math.max(800, Math.min(2800, Number(humanRating) || 1600));
-    const skill = (rating - 800) / 2000;
-    const lossScale = 90 - skill * 65;
-    const bookSpread = 3.6 - skill * 2.0;
+    const enemyRating = Math.max(800, Math.min(2800, Number(opponentRating) || rating));
+    const ratingGap = Math.max(-400, Math.min(400, enemyRating - rating));
+    const modeBoost = ({Bullet: -35, Blitz: -10, Rapid: 25, Classical: 45})[gameMode] || 0;
+    const effectiveRating = Math.max(
+      800,
+      Math.min(3000, rating + ratingGap * 0.2 + modeBoost + 100)
+    );
+    const skill = (effectiveRating - 800) / 2200;
+    const lossScale = 62 - skill * 30;
+    const maxLoss = 125 - skill * 70;
+    const bookSpread = 3.0 - skill * 1.3;
     const bestScore = result.score;
     const distinctPool = candidates.length > 1
       ? candidates.filter(move => move !== candidates[0])
       : candidates;
-    const weighted = distinctPool.map((move, index) => {
-      const loss = result.book ? 0 : Math.max(0, bestScore - move.score);
-      return {
-        move,
-        weight: result.book
-          ? Math.exp(-index / bookSpread)
-          : Math.exp(-loss / lossScale) / Math.pow(index + 1, 0.65)
-      };
-    });
+
+    if (!result.book) {
+      const safePool = distinctPool.filter(move => bestScore - move.score <= maxLoss);
+      const pool = safePool.length ? safePool : distinctPool.slice().sort((a, b) =>
+        (bestScore - a.score) - (bestScore - b.score)
+      ).slice(0, 1);
+      const weighted = pool.map((move, index) => {
+        const loss = Math.max(0, bestScore - move.score);
+        return {
+          move,
+          weight: Math.exp(-loss / lossScale) / Math.pow(index + 1, 0.55)
+        };
+      });
+      const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+      let threshold = Math.random() * total;
+
+      for (const entry of weighted) {
+        threshold -= entry.weight;
+        if (threshold <= 0) return entry.move;
+      }
+
+      return weighted[weighted.length - 1].move;
+    }
+
+    const weighted = distinctPool.map((move, index) => ({
+      move,
+      weight: Math.exp(-index / bookSpread)
+    }));
     const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
     let threshold = Math.random() * total;
 
@@ -578,6 +636,7 @@
         castlingRights = 0;
         epSquare = null;
         humanRating = null;
+        opponentRating = null;
         gameMode = null;
         stateInitialized = false;
         lastObservedPosition = null;
@@ -599,6 +658,8 @@
 
       const detectedRating = readPlayerRating();
       if (detectedRating) humanRating = detectedRating;
+      const detectedOpponentRating = readOpponentRating();
+      if (detectedOpponentRating) opponentRating = detectedOpponentRating;
       const detectedGameMode = readGameMode();
       if (detectedGameMode) gameMode = detectedGameMode;
 
@@ -675,6 +736,7 @@
           humanMode
             ? ("Engine-assisted study mode" +
               (humanRating ? " • Rating " + humanRating : "") +
+              (opponentRating ? " • Opponent " + opponentRating : "") +
               (gameMode ? " • " + gameMode : ""))
             : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
