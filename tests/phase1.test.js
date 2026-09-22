@@ -133,9 +133,59 @@ function loadContentHarness({fen, playerSide, turn, engineResult}) {
     }
   };
 
+  class FakeWorker {
+    constructor() {
+      this.onmessage = null;
+      this.onerror = null;
+    }
+
+    postMessage(message) {
+      setTimeout(() => {
+        try {
+          let result;
+          if (message.type === "gameState") {
+            result = engine.getGameState(
+              message.position,
+              message.side,
+              message.castlingRights,
+              message.epSquare
+            );
+          } else if (message.type === "search") {
+            result = engine.search(
+              message.position,
+              message.side,
+              message.maxDepth,
+              message.nodeLimit,
+              message.alternativeCount,
+              message.castlingRights,
+              message.epSquare
+            );
+          } else {
+            throw new Error("Unknown fake worker task");
+          }
+
+          this.onmessage?.({data: {taskId: message.taskId, ok: true, result}});
+        } catch (error) {
+          this.onmessage?.({
+            data: {
+              taskId: message.taskId,
+              ok: false,
+              error: error.message
+            }
+          });
+        }
+      }, 0);
+    }
+
+    terminate() {}
+  }
+
   const chrome = {
     runtime: {
       lastError: null,
+      getURL(path) {
+        return "chrome-extension://test/" + path;
+      },
       sendMessage(message, callback) {
         callback({ok: true, found: false});
       },
@@ -148,9 +198,10 @@ function loadContentHarness({fen, playerSide, turn, engineResult}) {
   };
 
   const sandbox = {
-    window: {__CMH_ENGINE__: engine},
+    window: {},
     document,
     chrome,
+    Worker: FakeWorker,
     location: {
       pathname: "/game/live/123",
       href: "https://www.chess.com/game/live/123"
@@ -178,7 +229,7 @@ function loadContentHarness({fen, playerSide, turn, engineResult}) {
         response = value;
       });
       resolve({captured, response});
-    }, 25);
+    }, 75);
   });
 }
 
@@ -221,6 +272,13 @@ function loadMainBridgeHarness({playerSide, turn, fen}) {
 
   return board;
 }
+
+test("engine worker entry point references the shared engine", () => {
+  const worker = fs.readFileSync(require("node:path").join(root, "engine-worker.js"), "utf8");
+  assert.match(worker, /importScripts\("engine\.js"\)/);
+  assert.match(worker, /self\.onmessage/);
+  assert.doesNotThrow(() => new Function(worker));
+});
 
 test("starting position has 20 legal moves", () => {
   const engine = loadEngine();
