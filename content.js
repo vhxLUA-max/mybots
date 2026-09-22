@@ -1,4 +1,4 @@
-const ext = globalThis.browser ?? globalThis.chrome;
+var ext = globalThis.browser ?? globalThis.chrome;
 
 (() => {
   if (window.__chessMoveHelperLoaded) return;
