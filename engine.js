@@ -895,6 +895,66 @@
       return best;
     }
 
+    getMateDistance(score) {
+      if (score > MATE_THRESHOLD) return Math.max(1, Math.ceil((MATE_SCORE - score + 1) / 2));
+      if (score < -MATE_THRESHOLD) return -Math.max(1, Math.ceil((MATE_SCORE - Math.abs(score) + 1) / 2));
+      return null;
+    }
+
+    principalVariation(position, side, depth, castlingRights = 15, epSquare = null, firstMove = null) {
+      const line = [];
+      let currentPosition = position;
+      let currentSide = side;
+      let currentCastlingRights = castlingRights;
+      let currentEpSquare = epSquare;
+      let forcedMove = firstMove;
+
+      for (let ply = 0; ply < depth; ply++) {
+        const moves = legalMoves(currentPosition, currentSide, currentCastlingRights, currentEpSquare);
+        if (!moves.length) break;
+
+        const key = stateKey(currentPosition, currentSide, currentCastlingRights, currentEpSquare);
+        const entry = this.table.get(key);
+        let candidateMove = forcedMove;
+
+        if (!candidateMove &&
+            entry?.generation === this.generation &&
+            entry.flag === "EXACT" &&
+            entry.depth >= depth - ply) {
+          candidateMove = entry.bestMove;
+        }
+
+        const move = moves.find(item =>
+          candidateMove &&
+          item.from === candidateMove.from &&
+          item.to === candidateMove.to &&
+          item.promotion === (candidateMove.promotion || null)
+        );
+        if (!move) break;
+
+        line.push({
+          from: move.from,
+          to: move.to,
+          promotion: move.promotion
+        });
+
+        const nextState = nextStateMetadata(
+          currentPosition,
+          currentSide,
+          currentCastlingRights,
+          currentEpSquare,
+          move
+        );
+        currentPosition = applyMove(currentPosition, move);
+        currentSide = currentSide === "w" ? "b" : "w";
+        currentCastlingRights = nextState.castlingRights;
+        currentEpSquare = nextState.epSquare;
+        forcedMove = null;
+      }
+
+      return line;
+    }
+
     searchRoot(position, side, depth, alpha, beta, castlingRights = 15, epSquare = null, ply = 0) {
       const moves = legalMoves(position, side, castlingRights, epSquare);
       if (!moves.length) return {
@@ -1070,8 +1130,13 @@
           from: entry.move.from,
           to: entry.move.to,
           promotion: entry.move.promotion,
-          score: entry.score
+          score: entry.score,
+          loss: Math.max(0, bestScore - entry.score)
         }));
+
+      const principalVariation = reachedDepth > 0
+        ? this.principalVariation(position, side, reachedDepth, castlingRights, epSquare, bestMove)
+        : [bestMove].filter(Boolean);
 
       return {
         gameState: kingInCheck(position, side) ? "check" : "playing",
@@ -1079,6 +1144,8 @@
         to: bestMove.to,
         promotion: bestMove.promotion,
         score: bestScore,
+        mate: this.getMateDistance(bestScore),
+        pv: principalVariation,
         depth: reachedDepth,
         nodes: this.nodes,
         alternatives: outputMoves
