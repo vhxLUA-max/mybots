@@ -1,3 +1,5 @@
+const ext = globalThis.browser ?? globalThis.chrome;
+
 (() => {
   const statusEl=document.querySelector("#cmh-status");
   const detailEl=document.querySelector("#cmh-detail");
@@ -84,18 +86,18 @@
 
   async function getActiveTab(){
     if(document.body.dataset.cmhPage==="dashboard"){
-      const tabs=await chrome.tabs.query({currentWindow:true});
+      const tabs=await ext.tabs.query({currentWindow:true});
       return tabs.find(tab=>tab.url?.startsWith("https://www.chess.com/"))||null;
     }
-    const tabs=await chrome.tabs.query({active:true,currentWindow:true});
+    const tabs=await ext.tabs.query({active:true,currentWindow:true});
     return tabs[0]||null;
   }
 
   function sendMessage(message){
     return new Promise((resolve,reject)=>{
-      chrome.tabs.sendMessage(tabId,message,response=>{
-        if(chrome.runtime.lastError){
-          reject(new Error(chrome.runtime.lastError.message));
+      ext.tabs.sendMessage(tabId,message,response=>{
+        if(ext.runtime.lastError){
+          reject(new Error(ext.runtime.lastError.message));
           return;
         }
         resolve(response);
@@ -163,7 +165,7 @@
   });
 
   dashboardOpenButton?.addEventListener("click",async()=>{
-    await chrome.tabs.create({url:chrome.runtime.getURL("dashboard.html")});
+    await ext.tabs.create({url:ext.runtime.getURL("dashboard.html")});
   });
 
   connect();
