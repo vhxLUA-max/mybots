@@ -252,11 +252,17 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
     }
   };
 
+  class Observer {
+    observe() {}
+    disconnect() {}
+  }
+
   const sandbox = {
     window: {},
     document,
     chrome,
     Worker: FakeWorker,
+    MutationObserver: Observer,
     location: {
       pathname: "/game/live/123",
       href: "https://www.chess.com/game/live/123"
@@ -314,6 +320,7 @@ function loadMainBridgeHarness({playerSide, turn, fen}) {
   }
 
   const sandbox = {
+    window: {},
     document,
     MutationObserver: Observer,
     setInterval() {}
