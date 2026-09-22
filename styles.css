@@ -32,6 +32,21 @@
   opacity: 0.82;
 }
 
+.cmh-arrow-layer .cmh-arrow.cmh-human {
+  stroke: #f0aa28 !important;
+  stroke-width: 2;
+}
+
+.cmh-arrow-layer .cmh-arrow.cmh-mistake {
+  stroke: #f07828 !important;
+  stroke-width: 1.45;
+}
+
+.cmh-arrow-layer .cmh-arrow.cmh-blunder {
+  stroke: #dc3232 !important;
+  stroke-width: 1.2;
+}
+
 .cmh-arrow-layer .cmh-arrow.cmh-ok {
   color: #f0aa28;
   stroke: #f0aa28 !important;
