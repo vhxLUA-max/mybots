@@ -224,7 +224,9 @@
     const pool = eligible.length ? eligible : candidates;
     const weighted = pool.map((move, index) => ({
       move,
-      weight: Math.exp(-Math.max(0, bestScore - move.score) / 35) / (index + 1)
+      weight: result.book
+        ? 1 / (index + 1)
+        : Math.exp(-Math.max(0, bestScore - move.score) / 35) / (index + 1)
     }));
     const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
     let threshold = Math.random() * total;
