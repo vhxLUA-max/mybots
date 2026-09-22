@@ -1,6 +1,8 @@
 (() => {
   const statusEl = document.querySelector("#cmh-status");
   const detailEl = document.querySelector("#cmh-detail");
+  const playerRatingEl = document.querySelector("#cmh-player-rating");
+  const gameModeEl = document.querySelector("#cmh-game-mode");
   const dotEl = document.querySelector("#cmh-dot");
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
@@ -30,6 +32,13 @@
     statusEl.textContent = status;
     detailEl.textContent = detail;
     setConnectionState(connected ? "ready" : "error");
+  }
+
+  function setGameInfo(response) {
+    playerRatingEl.textContent = response.humanRating
+      ? Number(response.humanRating).toLocaleString()
+      : "—";
+    gameModeEl.textContent = response.gameMode || "Detecting...";
   }
 
   function formatBookSize(size) {
@@ -151,6 +160,7 @@
     setToggle(humanModeButton, response.humanMode);
     setToggle(bookEnabledButton, response.bookEnabled);
     setStatus(response.status, response.detail, true);
+    setGameInfo(response);
     bookModeSelect.value = response.bookMode || "random";
     setDepthDisplay(response.engineDepth || 4);
   }
@@ -182,6 +192,7 @@
       const response = await sendMessage({type: "scan"});
       if (!response?.ok) throw new Error(response?.error || "Analysis failed.");
       setStatus(response.status, response.detail, true);
+      setGameInfo(response);
       setToggle(alternativesButton, response.showAlternatives);
       setToggle(humanModeButton, response.humanMode);
       setToggle(bookEnabledButton, response.bookEnabled);
@@ -205,6 +216,7 @@
       if (!response?.ok) throw new Error(response?.error || "Human mode update failed.");
       setToggle(humanModeButton, response.humanMode);
       setStatus(response.status, response.detail, true);
+      setGameInfo(response);
     } catch {
       setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
     }
