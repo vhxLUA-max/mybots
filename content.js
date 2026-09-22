@@ -233,7 +233,10 @@
     const bestScore = result.score;
     const eligible = candidates.filter(move => result.book || bestScore - move.score <= 80);
     const pool = eligible.length ? eligible : candidates;
-    const weighted = pool.map((move, index) => ({
+    const distinctPool = pool.length > 1
+      ? pool.filter(move => move !== candidates[0])
+      : pool;
+    const weighted = (distinctPool.length ? distinctPool : pool).map((move, index) => ({
       move,
       weight: result.book
         ? 1 / (index + 1)
@@ -424,7 +427,7 @@
       label.setAttribute("y", String(labelY));
       label.setAttribute("text-anchor", "middle");
       label.setAttribute("dominant-baseline", "middle");
-      label.textContent = formatEvaluation(move.score, side, result.book);
+      label.textContent = humanMode ? "" : formatEvaluation(move.score, side, result.book);
       label.classList.add("cmh-eval-label", "cmh-" + category);
       label.style.setProperty("fill", color, "important");
       svg.appendChild(label);
@@ -572,14 +575,14 @@
 
       if (result.book) {
         setStatus(
-          humanMode ? "Study candidate " + moveName(displayResult.humanMove || result) : "Book " + moveName(result),
+          humanMode ? "Study candidates" : "Book " + moveName(result),
           (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
         );
       } else {
         setStatus(
-          humanMode ? "Study candidate " + moveName(displayResult.humanMove || result) : "Best " + moveName(result),
+          humanMode ? "Study candidates" : "Best " + moveName(result),
           humanMode
-            ? "Engine-assisted study candidates"
+            ? "Engine-assisted study mode"
             : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
       }
@@ -613,8 +616,8 @@
         drawArrows(board, lastResult, getSideToMove());
         setStatus(
           lastResult.book
-            ? (humanMode ? "Study candidate " + moveName(lastResult.humanMove || lastResult) : "Book " + moveName(lastResult))
-            : (humanMode ? "Study candidate " + moveName(lastResult.humanMove || lastResult) : "Best " + moveName(lastResult)),
+            ? (humanMode ? "Study candidates" : "Book " + moveName(lastResult))
+            : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
           lastResult.book
             ? (lastResult.bookName || "Opening book")
             : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
