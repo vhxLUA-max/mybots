@@ -260,7 +260,7 @@ test("en passant move is generated when legal", () => {
 
 test("promotion moves are generated", () => {
   const engine = loadEngine();
-  const position = positionFromFen("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+  const position = positionFromFen("7k/4P3/8/8/8/8/8/4K3 w - - 0 1");
   const result = engine.search(position, "w", 1, 50000, 32, 0, null);
   const promotions = result.alternatives.filter(move => move.from === index("e7") && move.to === index("e8"));
   assert.deepEqual(new Set(promotions.map(move => move.promotion)), new Set(["Q", "R", "B", "N"]));
