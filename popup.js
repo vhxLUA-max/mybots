@@ -4,6 +4,7 @@
   const dotEl = document.querySelector("#cmh-dot");
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
+  const humanModeButton = document.querySelector("#cmh-human-mode");
   const bookEnabledButton = document.querySelector("#cmh-book-enabled");
   const bookModeSelect = document.querySelector("#cmh-book-mode");
   const bookStatusEl = document.querySelector("#cmh-book-status");
@@ -147,6 +148,7 @@
     if (!response?.ok) throw new Error("Chess Move Helper is not loaded yet.");
 
     setToggle(alternativesButton, response.showAlternatives);
+    setToggle(humanModeButton, response.humanMode);
     setToggle(bookEnabledButton, response.bookEnabled);
     setStatus(response.status, response.detail, true);
     bookModeSelect.value = response.bookMode || "random";
@@ -181,6 +183,7 @@
       if (!response?.ok) throw new Error(response?.error || "Analysis failed.");
       setStatus(response.status, response.detail, true);
       setToggle(alternativesButton, response.showAlternatives);
+      setToggle(humanModeButton, response.humanMode);
       setToggle(bookEnabledButton, response.bookEnabled);
       await loadBookInfo();
     } catch (error) {
@@ -189,6 +192,21 @@
     } finally {
       scanButton.disabled = false;
       scanButton.textContent = "Analyze Position";
+    }
+  });
+
+  humanModeButton.addEventListener("click", async () => {
+    if (tabId === null) return;
+    try {
+      const response = await sendMessage({
+        type: "setHumanMode",
+        value: !humanModeButton.classList.contains("cmh-on")
+      });
+      if (!response?.ok) throw new Error(response?.error || "Human mode update failed.");
+      setToggle(humanModeButton, response.humanMode);
+      setStatus(response.status, response.detail, true);
+    } catch {
+      setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
     }
   });
 
