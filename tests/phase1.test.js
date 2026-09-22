@@ -94,7 +94,7 @@ function createNode(attributes = {}) {
   return node;
 }
 
-function loadContentHarness({fen, playerSide, turn, engineResult}) {
+function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailable = true}) {
   let captured = null;
   let messageListener = null;
 
@@ -135,6 +135,7 @@ function loadContentHarness({fen, playerSide, turn, engineResult}) {
 
   class FakeWorker {
     constructor() {
+      if (!workerAvailable) throw new Error("Worker unavailable");
       this.onmessage = null;
       this.onerror = null;
     }
@@ -187,6 +188,10 @@ function loadContentHarness({fen, playerSide, turn, engineResult}) {
         return "chrome-extension://test/" + path;
       },
       sendMessage(message, callback) {
+        if (message?.type === "engineTask") {
+          callback({ok: true, result: engineResult});
+          return;
+        }
         callback({ok: true, found: false});
       },
       onMessage: {
@@ -417,6 +422,32 @@ test("content state distinguishes player side from side to move", async () => {
   assert.equal(result.response.playerSide, "w");
   assert.equal(result.response.sideToMove, "b");
   assert.equal(result.response.isPlayerTurn, false);
+});
+
+test("content falls back to the extension service worker when Worker is unavailable", async () => {
+  const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const engineResult = {
+    gameState: "playing",
+    from: index("e2"),
+    to: index("e4"),
+    promotion: null,
+    score: 20,
+    depth: 1,
+    nodes: 1,
+    alternatives: [{from: index("e2"), to: index("e4"), promotion: null, score: 20}]
+  };
+
+  const result = await loadContentHarness({
+    fen,
+    playerSide: "w",
+    turn: "w",
+    engineResult,
+    workerAvailable: false
+  });
+
+  assert.equal(result.captured.type, "search");
+  assert.equal(result.captured.searchArgs[1], "w");
+  assert.equal(result.response.status, "Best e2e4");
 });
 
 test("content fallback turn detection remains available without bridge state", async () => {
