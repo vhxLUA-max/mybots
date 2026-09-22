@@ -210,11 +210,11 @@ body {
 }
 
 .cmh-best {
-  background: #39e56b;
+  background: rgba(20, 160, 80, 0.75);
 }
 
 .cmh-good {
-  background: #43b7ff;
+  background: rgba(90, 190, 120, 0.6);
 }
 
 .cmh-ok {
@@ -223,6 +223,18 @@ body {
 
 .cmh-bad {
   background: #ff625f;
+}
+
+.cmh-human {
+  background: rgba(240, 170, 40, 0.75);
+}
+
+.cmh-mistake {
+  background: rgba(240, 120, 40, 0.7);
+}
+
+.cmh-blunder {
+  background: rgba(220, 50, 50, 0.75);
 }
 
 .cmh-footer {
