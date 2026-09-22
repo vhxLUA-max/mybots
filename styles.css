@@ -90,18 +90,13 @@
 }
 
 .cmh-eval-bar-track {
-  fill: #1a1d23;
-  stroke: rgba(255, 255, 255, 0.18);
-  stroke-width: 0.2;
+  fill: #0a0b0d;
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 0.15;
 }
 
 .cmh-eval-bar-white {
   fill: #f5f7fb;
-}
-
-.cmh-eval-bar-center {
-  stroke: rgba(255, 255, 255, 0.35);
-  stroke-width: 0.25;
 }
 
 .cmh-eval-score {
