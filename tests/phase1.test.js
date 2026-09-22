@@ -268,7 +268,7 @@ test("promotion moves are generated", () => {
 
 test("mate in one returns the expected mate-distance score", () => {
   const engine = loadEngine();
-  const position = positionFromFen("7k/6Q1/5K2/8/8/8/8/8 w - - 0 1");
+  const position = positionFromFen("7k/8/5KQ1/8/8/8/8/8 w - - 0 1");
   const result = engine.search(position, "w", 1, 50000, 8, 0, null);
   assert.equal(result.score, 999998);
 });
