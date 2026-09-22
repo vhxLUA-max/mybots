@@ -232,7 +232,7 @@ test("starting position has 20 legal moves", () => {
 
 test("fool's mate position is checkmate", () => {
   const engine = loadEngine();
-  const position = positionFromFen("rnb1kbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 3");
+  const position = positionFromFen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 3");
   assert.equal(engine.getGameState(position, "w", 15, null), "checkmate");
 });
 
