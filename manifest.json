@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chess Move Helper",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Analyzes supported Chess.com positions with Stockfish 19 Lite Single.",
   "action": {
     "default_title": "Chess Move Helper",
@@ -38,6 +38,9 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "background": {
+    "scripts": [
+      "background.js"
+    ],
     "service_worker": "background.js"
   },
   "permissions": [
