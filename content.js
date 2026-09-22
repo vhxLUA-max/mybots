@@ -544,9 +544,8 @@
     }
     svg.appendChild(defs);
 
-    moves.forEach((move, index) => {
-      const isHumanPick = humanMode && move === humanMove;
-      const category = arrowCategory(move.score, isHumanPick);
+    drawEntries.forEach(entry => {
+      const {move, isHumanPick, category} = entry;
       const color = arrowColor(move.score, isHumanPick);
 
       const source = indexToSquare(move.from);
