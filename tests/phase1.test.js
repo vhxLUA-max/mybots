@@ -23,6 +23,8 @@ test("Stockfish runs from extension origin via offscreen worker host",()=>{
   assert.equal(background.includes('reasons:["WORKERS"]'),true);
   assert.equal(background.includes('url:OFFSCREEN_DOCUMENT_PATH'),true);
   assert.equal(offscreen.includes('new Worker(chrome.runtime.getURL("stockfish-19-lite-single.js"))'),true);
+  assert.equal(offscreen.includes('bestmove "))resolve(line.split(/\\s+/)[1]||"")'),false);
+  assert.equal(offscreen.includes('bestmove "))resolve(line.split(/\s+/)[1]||"")'),true);
   assert.equal(html.includes('<script src="offscreen.js"></script>'),true);
 
   for(const value of ["Maia","maia3","Polyglot","bookLookup","stockfish-worker.js"]){
