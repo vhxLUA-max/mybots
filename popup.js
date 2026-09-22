@@ -3,6 +3,7 @@
   const detailEl = document.querySelector("#cmh-detail");
   const playerRatingEl = document.querySelector("#cmh-player-rating");
   const playerSideEl = document.querySelector("#cmh-player-side");
+  const sideToMoveEl = document.querySelector("#cmh-side-to-move");
   const opponentRatingEl = document.querySelector("#cmh-opponent-rating");
   const gameModeEl = document.querySelector("#cmh-game-mode");
   const confidenceEl = document.querySelector("#cmh-confidence");
@@ -46,6 +47,11 @@
       ? "White"
       : response.playerSide === "b"
         ? "Black"
+        : "Detecting...";
+    sideToMoveEl.textContent = response.sideToMove === "w"
+      ? "White" + (response.isPlayerTurn ? " • Your turn" : "")
+      : response.sideToMove === "b"
+        ? "Black" + (response.isPlayerTurn ? " • Your turn" : "")
         : "Detecting...";
     opponentRatingEl.textContent = response.opponentRating
       ? Number(response.opponentRating).toLocaleString()
