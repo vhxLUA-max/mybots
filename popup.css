@@ -41,6 +41,29 @@ body {
   letter-spacing: -0.02em;
 }
 
+.cmh-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cmh-dashboard-open {
+  padding: 6px 9px;
+  border: 1px solid #303645;
+  border-radius: 7px;
+  background: #1b1f27;
+  color: #cfd6e2;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cmh-dashboard-open:hover {
+  background: #232833;
+  border-color: #3a4252;
+}
+
 .cmh-dot {
   width: 10px;
   height: 10px;
