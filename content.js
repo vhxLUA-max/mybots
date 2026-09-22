@@ -226,7 +226,7 @@
   function chooseHumanCandidate(result) {
     const candidates = (result.alternatives?.length
       ? result.alternatives
-      : [result]).slice(0, 4);
+      : [result]).slice(0, 8);
 
     if (candidates.length <= 1) return candidates[0];
 
@@ -250,21 +250,72 @@
     return weighted[weighted.length - 1].move;
   }
 
+  function getHumanDisplayMoves(result) {
+    const candidates = (result.alternatives?.length
+      ? result.alternatives
+      : [result]).slice(0, 8);
+    const humanMove = result.humanMove || chooseHumanCandidate(result);
+    const bestMove = candidates[0];
+    const used = new Set();
+    const output = [];
+
+    const add = (move, category) => {
+      if (!move || used.has(move.from + ":" + move.to + ":" + (move.promotion || ""))) return;
+      used.add(move.from + ":" + move.to + ":" + (move.promotion || ""));
+      output.push({move, category});
+    };
+
+    add(bestMove, "best");
+
+    const goodMove = candidates.find(move =>
+      move !== bestMove &&
+      bestMove.score - move.score > 0 &&
+      bestMove.score - move.score <= 30
+    );
+    add(goodMove, "good");
+
+    add(humanMove, "human");
+
+    const mistakeMove = candidates.find(move => {
+      const loss = bestMove.score - move.score;
+      return move !== bestMove && move !== humanMove && loss > 100 && loss <= 250;
+    });
+    add(mistakeMove, "mistake");
+
+    const blunderMove = candidates.find(move => {
+      const loss = bestMove.score - move.score;
+      return move !== bestMove && move !== humanMove && loss > 250;
+    });
+    add(blunderMove, "blunder");
+
+    return {moves: output, humanMove};
+  }
+
   function drawArrows(board, result, side = getSideToMove()) {
     clearArrows(board);
     if (hidden) return;
 
     const candidates = (result.alternatives?.length
       ? result.alternatives
-      : [result]).slice(0, 4);
-    const humanMove = result.humanMove || (humanMode ? chooseHumanCandidate(result) : null);
-    const moves = showAlternatives ? candidates : [candidates[0]];
-    const entries = moves.map((move, index) => ({
-      move,
-      index,
-      isHumanPick: humanMode && move === humanMove,
-      category: arrowCategory(move.score, humanMode && move === humanMove)
-    }));
+      : [result]).slice(0, 8);
+    const studySet = humanMode ? getHumanDisplayMoves(result) : null;
+    const humanMove = result.humanMove || (humanMode ? studySet?.humanMove : null);
+    const moves = humanMode
+      ? studySet.moves.map(entry => entry.move)
+      : (showAlternatives ? candidates : [candidates[0]]);
+    const entries = humanMode
+      ? studySet.moves.map((entry, index) => ({
+        move: entry.move,
+        index,
+        isHumanPick: entry.category === "human",
+        category: entry.category
+      }))
+      : moves.map((move, index) => ({
+        move,
+        index,
+        isHumanPick: false,
+        category: arrowCategory(move.score, false)
+      }));
     const drawEntries = entries.sort((a, b) => {
       if (a.index === 0) return 1;
       if (b.index === 0) return -1;
@@ -497,7 +548,7 @@
         side,
         engineDepth,
         nodeLimit,
-        4,
+        humanMode ? 8 : 4,
         castlingRights,
         epSquare
       );
@@ -521,13 +572,15 @@
 
       if (result.book) {
         setStatus(
-          humanMode ? "Human candidate " + moveName(displayResult.humanMove || result) : "Book " + moveName(result),
+          humanMode ? "Study candidate " + moveName(displayResult.humanMove || result) : "Book " + moveName(result),
           (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
         );
       } else {
         setStatus(
-          humanMode ? "Human candidate " + moveName(displayResult.humanMove || result) : "Best " + moveName(result),
-          "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
+          humanMode ? "Study candidate " + moveName(displayResult.humanMove || result) : "Best " + moveName(result),
+          humanMode
+            ? "Engine-assisted study candidates"
+            : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
       }
 
@@ -560,8 +613,8 @@
         drawArrows(board, lastResult, getSideToMove());
         setStatus(
           lastResult.book
-            ? (humanMode ? "Human candidate " + moveName(lastResult.humanMove || lastResult) : "Book " + moveName(lastResult))
-            : (humanMode ? "Human candidate " + moveName(lastResult.humanMove || lastResult) : "Best " + moveName(lastResult)),
+            ? (humanMode ? "Study candidate " + moveName(lastResult.humanMove || lastResult) : "Book " + moveName(lastResult))
+            : (humanMode ? "Study candidate " + moveName(lastResult.humanMove || lastResult) : "Best " + moveName(lastResult)),
           lastResult.book
             ? (lastResult.bookName || "Opening book")
             : "Depth " + lastResult.depth + " • " + lastResult.nodes + " nodes"
