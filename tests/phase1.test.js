@@ -94,7 +94,7 @@ function createNode(attributes = {}) {
   return node;
 }
 
-function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailable = true}) {
+function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailable = true, maiaAvailable = true}) {
   let captured = null;
   let messageListener = null;
 
@@ -106,8 +106,13 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
 
   const engine = {
     getGameState(...args) {
-      captured = {type: "gameState", args};
+      captured = {...captured, type: "gameState", args, gameStateArgs: args};
       return "playing";
+    },
+    maiaSearch(...args) {
+      captured = {...captured, type: "maiaSearch", maiaArgs: args};
+      if (!maiaAvailable) throw new Error("Maia unavailable");
+      return engineResult;
     },
     search(...args) {
       captured = {...captured, type: "search", searchArgs: args};
@@ -151,6 +156,16 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
               message.castlingRights,
               message.epSquare
             );
+          } else if (message.type === "maiaSearch") {
+            result = engine.maiaSearch(
+              message.position,
+              message.side,
+              message.alternativeCount,
+              message.castlingRights,
+              message.epSquare,
+              message.selfElo,
+              message.oppoElo
+            );
           } else if (message.type === "search") {
             result = engine.search(
               message.position,
@@ -189,6 +204,41 @@ function loadContentHarness({fen, playerSide, turn, engineResult, workerAvailabl
       },
       sendMessage(message, callback) {
         if (message?.type === "engineTask") {
+          const payload = message.payload || {};
+          if (message.task === "maiaSearch" && !maiaAvailable) {
+            captured = {...captured, type: "maiaSearch"};
+            callback({ok: false, error: "Maia unavailable"});
+            return;
+          }
+
+          captured = {
+            ...captured,
+            type: message.task,
+            ...(message.task === "maiaSearch"
+              ? {
+                maiaArgs: [
+                  payload.position,
+                  payload.side,
+                  payload.alternativeCount,
+                  payload.castlingRights,
+                  payload.epSquare,
+                  payload.selfElo,
+                  payload.oppoElo
+                ]
+              }
+              : {
+                searchArgs: [
+                  payload.position,
+                  payload.side,
+                  payload.maxDepth,
+                  payload.nodeLimit,
+                  payload.alternativeCount,
+                  payload.castlingRights,
+                  payload.epSquare
+                ]
+              })
+          };
+
           callback({ok: true, result: engineResult});
           return;
         }
@@ -277,6 +327,20 @@ function loadMainBridgeHarness({playerSide, turn, fen}) {
 
   return board;
 }
+
+test("Maia 3 provider wiring is present", () => {
+  const worker = fs.readFileSync(require("node:path").join(root, "engine-worker.js"), "utf8");
+  const maia = fs.readFileSync(require("node:path").join(root, "maia3", "maia3-engine.js"), "utf8");
+  const manifest = JSON.parse(fs.readFileSync(require("node:path").join(root, "manifest.json"), "utf8"));
+
+  assert.match(worker, /maia3\/maia3-engine\.js/);
+  assert.match(maia, /logits_move/);
+  assert.match(maia, /4352/);
+  assert.equal(manifest.host_permissions.includes("https://raw.githubusercontent.com/*"), true);
+  assert.equal(manifest.web_accessible_resources[0].resources.includes("maia3/*"), true);
+  assert.equal(manifest.web_accessible_resources[0].resources.includes("ort.min.js"), true);
+  assert.equal(manifest.content_security_policy.extension_pages.includes("wasm-unsafe-eval"), true);
+});
 
 test("engine worker entry point references the shared engine", () => {
   const worker = fs.readFileSync(require("node:path").join(root, "engine-worker.js"), "utf8");
@@ -388,15 +452,16 @@ test("content state uses authoritative FEN side, castling, and en passant", asyn
     engineResult
   });
 
-  assert.deepEqual(result.captured.args.slice(0, 4), [
+  assert.deepEqual(result.captured.gameStateArgs.slice(0, 4), [
     positionFromFen(fen),
     "b",
     15,
     index("d6")
   ]);
-  assert.equal(result.captured.searchArgs[1], "b");
-  assert.equal(result.captured.searchArgs[5], 15);
-  assert.equal(result.captured.searchArgs[6], index("d6"));
+  assert.equal(result.captured.type, "maiaSearch");
+  assert.equal(result.captured.maiaArgs[1], "b");
+  assert.equal(result.captured.maiaArgs[3], 15);
+  assert.equal(result.captured.maiaArgs[4], index("d6"));
   assert.equal(result.response.playerSide, "b");
   assert.equal(result.response.sideToMove, "b");
   assert.equal(result.response.isPlayerTurn, true);
@@ -449,12 +514,46 @@ test("content falls back to the extension service worker when Worker is unavaila
     playerSide: "w",
     turn: "w",
     engineResult,
-    workerAvailable: false
+    workerAvailable: false,
+    maiaAvailable: false
   });
 
   assert.equal(result.captured.type, "search");
   assert.equal(result.captured.searchArgs[1], "w");
   assert.equal(result.response.status, "Best e2e4");
+});
+
+test("content prefers Maia when the provider is available", async () => {
+  const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const engineResult = {
+    gameState: "playing",
+    from: index("e2"),
+    to: index("e4"),
+    promotion: null,
+    score: 620,
+    probability: 0.62,
+    depth: 0,
+    nodes: 0,
+    alternatives: [
+      {from: index("e2"), to: index("e4"), promotion: null, score: 620, probability: 0.62},
+      {from: index("d2"), to: index("d4"), promotion: null, score: 180, probability: 0.18}
+    ],
+    maia: true,
+    model: "Maia 3 5M"
+  };
+
+  const result = await loadContentHarness({
+    fen,
+    playerSide: "w",
+    turn: "w",
+    engineResult
+  });
+
+  assert.equal(result.captured.type, "maiaSearch");
+  assert.equal(result.response.analysisSource, "Maia 3 • Human predictor");
+  assert.equal(result.response.analysisEvaluation, "62.0%");
+  assert.equal(result.response.analysisCandidates[0].loss, 0);
+  assert.equal(result.response.analysisCandidates[0].lossUnit, "pp");
 });
 
 test("content fallback turn detection remains available without bridge state", async () => {
