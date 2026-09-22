@@ -129,6 +129,15 @@ var ext = globalThis.browser ?? globalThis.chrome;
     return response.result;
   }
 
+  function normalizeEngineFen(fen){
+    const fields=String(fen||"").trim().split(/\s+/);
+    if(fields.length<4)return null;
+    while(fields.length<6)fields.push(fields.length===4?"0":"1");
+    fields[4]=/^\d+$/.test(fields[4])?fields[4]:"0";
+    fields[5]=/^\d+$/.test(fields[5])?fields[5]:"1";
+    return fields.slice(0,6).join(" ");
+  }
+
   function positionToFen(position, side, rights, ep) {
     const ranks = [];
 
@@ -803,7 +812,8 @@ var ext = globalThis.browser ?? globalThis.chrome;
 
       let result;
       try{
-        const fen=board.getAttribute("data-cmh-fen")||positionToFen(position,side,castlingRights,epSquare);
+        const bridgedFen=normalizeEngineFen(board.getAttribute("data-cmh-fen"));
+        const fen=bridgedFen||positionToFen(position,side,castlingRights,epSquare);
         result=await requestStockfish(fen,16,showAlternatives?4:1);
       }catch(error){
         setStatus("Stockfish unavailable",error.message);
