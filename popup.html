@@ -10,7 +10,7 @@
   <main class="cmh-popup">
     <header class="cmh-header">
       <div>
-        <div class="cmh-eyebrow">LOCAL CHESS ENGINE</div>
+        <div class="cmh-eyebrow">MAIA 3 CHESS ANALYSIS</div>
         <h1>Chess Move Helper</h1>
       </div>
       <div class="cmh-header-actions">
@@ -48,10 +48,6 @@
           <span class="cmh-meta-label">POSITION CONFIDENCE</span>
           <span class="cmh-meta-value" id="cmh-confidence">—</span>
         </div>
-        <div class="cmh-meta-item">
-          <span class="cmh-meta-label">EST. ENGINE RATING</span>
-          <span class="cmh-meta-value" id="cmh-engine-rating">—</span>
-        </div>
       </div>
     </section>
 
@@ -64,17 +60,6 @@
           <div class="cmh-analysis-source" id="cmh-analysis-source">No analysis</div>
         </div>
         <div class="cmh-analysis-eval" id="cmh-analysis-eval">—</div>
-      </div>
-
-      <div class="cmh-analysis-metrics">
-        <div>
-          <span class="cmh-analysis-label">DEPTH</span>
-          <span class="cmh-analysis-value" id="cmh-analysis-depth">—</span>
-        </div>
-        <div>
-          <span class="cmh-analysis-label">NODES</span>
-          <span class="cmh-analysis-value" id="cmh-analysis-nodes">—</span>
-        </div>
       </div>
 
       <div class="cmh-analysis-pv">
@@ -94,7 +79,7 @@
       <div class="cmh-option">
         <div>
           <div class="cmh-option-title">Human mode</div>
-          <div class="cmh-option-subtitle">Study candidates: Best, Good, Okay, Human, Mistake, Blunder</div>
+          <div class="cmh-option-subtitle">Study Maia candidates: Best, Good, Okay, Human, Mistake, Blunder</div>
         </div>
         <button class="cmh-toggle" id="cmh-human-mode" aria-pressed="false">
           <span></span>
@@ -103,7 +88,7 @@
       <div class="cmh-option">
         <div>
           <div class="cmh-option-title">Alternative arrows</div>
-          <div class="cmh-option-subtitle">Show good, okay, and bad candidates</div>
+          <div class="cmh-option-subtitle">Show Maia candidate moves</div>
         </div>
         <button class="cmh-toggle cmh-on" id="cmh-alternatives" aria-pressed="true">
           <span></span>
@@ -125,15 +110,6 @@
         <select id="cmh-book-mode"></select>
       </div>
 
-      <div class="cmh-depth">
-        <div class="cmh-depth-header">
-          <label class="cmh-depth-label" for="cmh-depth">Engine depth</label>
-          <span class="cmh-depth-value" id="cmh-depth-value">Depth 4 • Strong</span>
-        </div>
-        <input id="cmh-depth" type="range" min="2" max="6" value="4" step="1">
-        <div class="cmh-depth-scale"><span>Quick</span><span>Normal</span><span>Strong</span><span>Very Strong</span><span>Deep</span></div>
-      </div>
-
       <div class="cmh-book-row">
         <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
         <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
@@ -153,7 +129,7 @@
       </div>
     </section>
 
-    <footer class="cmh-footer">Randomized Polyglot books • Local engine fallback</footer>
+    <footer class="cmh-footer">Maia 3 5M move prediction • Optional Polyglot opening books</footer>
   </main>
   <script src="popup.js"></script>
 </body>
