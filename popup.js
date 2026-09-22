@@ -7,7 +7,6 @@
   const opponentRatingEl = document.querySelector("#cmh-opponent-rating");
   const gameModeEl = document.querySelector("#cmh-game-mode");
   const confidenceEl = document.querySelector("#cmh-confidence");
-  const engineRatingEl = document.querySelector("#cmh-engine-rating");
   const dotEl = document.querySelector("#cmh-dot");
   const scanButton = document.querySelector("#cmh-scan");
   const alternativesButton = document.querySelector("#cmh-alternatives");
@@ -17,8 +16,6 @@
   const bookStatusEl = document.querySelector("#cmh-book-status");
   const bookFileInput = document.querySelector("#cmh-book-file");
   const bookClearButton = document.querySelector("#cmh-book-clear");
-  const depthInput = document.querySelector("#cmh-depth");
-  const depthValue = document.querySelector("#cmh-depth-value");
   const dashboardOpenButton = document.querySelector("#cmh-dashboard-open");
   const analysisSourceEl = document.querySelector("#cmh-analysis-source");
   const analysisEvalEl = document.querySelector("#cmh-analysis-eval");
@@ -67,9 +64,6 @@
     confidenceEl.textContent = response.humanConfidence
       ? response.humanConfidence + "%"
       : "—";
-    engineRatingEl.textContent = response.engineRating
-      ? "≈" + Number(response.engineRating).toLocaleString()
-      : "—";
     setAnalysis(response);
   }
 
@@ -97,10 +91,6 @@
     analysisSourceEl.textContent = source || "No analysis";
     analysisSourceEl.className = "cmh-analysis-source" + (source === "Opening book" ? " cmh-book-source" : source ? " cmh-engine-source" : "");
     analysisEvalEl.textContent = response.analysisEvaluation || "—";
-    analysisDepthEl.textContent = response.analysisDepth ? depthLabel(response.analysisDepth) : "—";
-    analysisNodesEl.textContent = response.analysisNodes
-      ? Number(response.analysisNodes).toLocaleString()
-      : "—";
     analysisPvEl.textContent = response.analysisPV || "—";
     analysisBookEl.textContent = response.analysisBookName || "";
 
@@ -226,23 +216,6 @@
     }
   }
 
-  function depthLabel(value) {
-    const labels = {
-      2: "Quick",
-      3: "Normal",
-      4: "Strong",
-      5: "Very Strong",
-      6: "Deep"
-    };
-    const depth = Number(value);
-    return "Depth " + depth + " • " + (labels[depth] || "Custom");
-  }
-
-  function setDepthDisplay(value) {
-    depthInput.value = String(value);
-    depthValue.textContent = depthLabel(value);
-  }
-
   async function refreshState() {
     const response = await sendMessage({type: "getState"});
     if (!response?.ok) throw new Error("Chess Move Helper is not loaded yet.");
@@ -253,7 +226,6 @@
     setStatus(response.status, response.detail, true);
     setGameInfo(response);
     bookModeSelect.value = response.bookMode || "random";
-    setDepthDisplay(response.engineDepth || 4);
   }
 
   async function connect() {
@@ -322,23 +294,6 @@
       });
       if (!response?.ok) throw new Error(response?.error || "Update failed.");
       setToggle(alternativesButton, response.showAlternatives);
-      setStatus(response.status, response.detail, true);
-    } catch {
-      setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
-    }
-  });
-
-  depthInput.addEventListener("change", async () => {
-    if (tabId === null) return;
-    const value = Number(depthInput.value);
-    setDepthDisplay(value);
-    try {
-      const response = await sendMessage({
-        type: "setEngineDepth",
-        value
-      });
-      if (!response?.ok) throw new Error(response?.error || "Depth update failed.");
-      setDepthDisplay(response.engineDepth || value);
       setStatus(response.status, response.detail, true);
     } catch {
       setStatus("Connection lost", "Refresh the Chess.com tab, then reopen the popup.", false);
