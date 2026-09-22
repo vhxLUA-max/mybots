@@ -122,7 +122,7 @@ async function search(fen,depth=16,alternativeCount=4){
       if(!line)return;
 
       if(line.startsWith("info "))parseInfo(line,lines);
-      if(line.startsWith("bestmove "))resolve(line.split(/\\s+/)[1]||"");
+      if(line.startsWith("bestmove "))resolve(line.split(/\s+/)[1]||"");
     };
 
     const timeout=setTimeout(()=>{
