@@ -33,6 +33,7 @@
   let showAlternatives = true;
   let humanMode = false;
   let humanRating = null;
+  let gameMode = null;
   let bookEnabled = true;
   let bookMode = "random";
   let engineDepth = 4;
@@ -62,6 +63,7 @@
       showAlternatives,
       humanMode,
       humanRating,
+      gameMode,
       bookEnabled,
       bookMode,
       engineDepth,
@@ -261,6 +263,51 @@
     return candidates[0]?.rating ?? null;
   }
 
+  function classifyGameMode(raw) {
+    const value = String(raw || "").toLowerCase();
+    if (/\bbullet\b/.test(value)) return "Bullet";
+    if (/\bblitz\b/.test(value)) return "Blitz";
+    if (/\brapid\b/.test(value)) return "Rapid";
+    if (/\bclassical\b|\bclassic\b/.test(value)) return "Classical";
+
+    const match = value.match(/\b(\d{1,3})\s*(?:\+|\|)\s*(\d{1,3})\b/);
+    if (!match) return null;
+
+    const base = Number(match[1]);
+    const minutes = base >= 60 ? base / 60 : base;
+    if (minutes < 3) return "Bullet";
+    if (minutes <= 5) return "Blitz";
+    if (minutes <= 25) return "Rapid";
+    return "Classical";
+  }
+
+  function readGameMode() {
+    const selectors = [
+      "[data-time-control]",
+      "[data-game-type]",
+      "[class*='time-control']",
+      "[class*='game-type']",
+      ".game-info",
+      ".game-type"
+    ];
+
+    for (const selector of selectors) {
+      for (const element of document.querySelectorAll(selector)) {
+        const raw = [
+          element.textContent,
+          element.getAttribute("data-time-control"),
+          element.getAttribute("data-game-type"),
+          element.getAttribute("aria-label"),
+          element.className
+        ].filter(Boolean).join(" ");
+        const mode = classifyGameMode(raw);
+        if (mode) return mode;
+      }
+    }
+
+    return classifyGameMode(document.body?.innerText);
+  }
+
   function chooseHumanCandidate(result) {
     const candidates = (result.alternatives?.length
       ? result.alternatives
@@ -377,37 +424,31 @@
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
     const categories = [...new Set(entries.map(entry => entry.category))];
     const evaluationTrack = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    evaluationTrack.setAttribute("x", "98.2");
-    evaluationTrack.setAttribute("y", "0.5");
-    evaluationTrack.setAttribute("width", "1.3");
-    evaluationTrack.setAttribute("height", "99");
+    evaluationTrack.setAttribute("x", "-2");
+    evaluationTrack.setAttribute("y", "0");
+    evaluationTrack.setAttribute("width", "1.7");
+    evaluationTrack.setAttribute("height", "100");
+    evaluationTrack.setAttribute("rx", "0.5");
     evaluationTrack.classList.add("cmh-eval-bar-track");
     svg.appendChild(evaluationTrack);
 
     if (!result.book) {
       const whiteRatio = evaluationPercent(result.score, side);
-      const whiteHeight = whiteRatio * 99;
-      const whiteY = orientation.flipped ? 0.5 : 99.5 - whiteHeight;
+      const whiteHeight = whiteRatio * 100;
+      const whiteY = orientation.flipped ? 0 : 100 - whiteHeight;
       const whiteBar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      whiteBar.setAttribute("x", "98.2");
+      whiteBar.setAttribute("x", "-2");
       whiteBar.setAttribute("y", String(whiteY));
-      whiteBar.setAttribute("width", "1.3");
+      whiteBar.setAttribute("width", "1.7");
       whiteBar.setAttribute("height", String(whiteHeight));
+      whiteBar.setAttribute("rx", "0.5");
       whiteBar.classList.add("cmh-eval-bar-white");
       svg.appendChild(whiteBar);
-
-      const centerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      centerLine.setAttribute("x1", "97.9");
-      centerLine.setAttribute("x2", "99.8");
-      centerLine.setAttribute("y1", "50");
-      centerLine.setAttribute("y2", "50");
-      centerLine.classList.add("cmh-eval-bar-center");
-      svg.appendChild(centerLine);
     }
 
     const evaluationLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    evaluationLabel.setAttribute("x", "97");
-    evaluationLabel.setAttribute("y", "4.5");
+    evaluationLabel.setAttribute("x", "-2.6");
+    evaluationLabel.setAttribute("y", orientation.flipped ? "97" : "3.8");
     evaluationLabel.setAttribute("text-anchor", "end");
     evaluationLabel.textContent = formatEvaluation(result.score, side, result.book);
     evaluationLabel.classList.add("cmh-eval-score");
@@ -537,6 +578,7 @@
         castlingRights = 0;
         epSquare = null;
         humanRating = null;
+        gameMode = null;
         stateInitialized = false;
         lastObservedPosition = null;
         const existingBoard = getBoardElement();
@@ -557,6 +599,8 @@
 
       const detectedRating = readPlayerRating();
       if (detectedRating) humanRating = detectedRating;
+      const detectedGameMode = readGameMode();
+      if (detectedGameMode) gameMode = detectedGameMode;
 
       const position = readPosition(board);
       const pieceCount = position.filter(Boolean).length;
@@ -629,7 +673,9 @@
         setStatus(
           humanMode ? "Study candidates" : "Best " + moveName(result),
           humanMode
-            ? ("Engine-assisted study mode" + (humanRating ? " • Rating " + humanRating : ""))
+            ? ("Engine-assisted study mode" +
+              (humanRating ? " • Rating " + humanRating : "") +
+              (gameMode ? " • " + gameMode : ""))
             : "Depth " + result.depth + " • " + result.nodes + " nodes • " + (result.alternatives?.length || 1) + " candidates"
         );
       }
