@@ -12,48 +12,35 @@
     ok: "rgba(240, 170, 40, 0.6)"
   };
 
-  function arrowColor(move, bestScore, isHumanPick, isBook) {
-    const category = arrowCategory(move, bestScore, isHumanPick, isBook);
-    return ARROW_COLORS[category];
-  }
+  
 
-  function arrowCategory(move, bestScore, isHumanPick, isBook) {
-    if (isHumanPick) return "human";
-    if (isBook) return "good";
-    const loss = Math.max(0, bestScore - move.score);
-    if (loss <= 20) return "best";
-    if (loss <= 50) return "good";
-    if (loss <= 100) return "ok";
-    if (loss <= 250) return "mistake";
+  function arrowCategory(move,bestScore){
+    const loss=Math.max(0,bestScore-move.score);
+    if(loss<=20)return "best";
+    if(loss<=50)return "good";
+    if(loss<=100)return "ok";
+    if(loss<=250)return "mistake";
     return "blunder";
   }
 
   let hidden = false;
   let showAlternatives = true;
-  let humanMode = false;
   let humanRating = null;
   let opponentRating = null;
   let gameMode = null;
-  let humanConfidence = null;
   let playerSide = null;
   let sideToMove = null;
-  let bookEnabled = true;
-  let bookMode = "random";
-  let engineMode = "maia";
   let busy = false;
   let scanQueuedWhileBusy = false;
   let scanTimer = null;
   let observedBoard = null;
   let boardObserver = null;
-  let engineWorker = null;
-  let engineWorkerFailed = false;
-  let engineWorkerRequestId = 0;
-  const engineWorkerPending = new Map();
+  let stockfishWorker = null;
+  let stockfishReady = false;
   let lastMetadataRefreshAt = 0;
   let metadataBoard = null;
   let lastPositionKey = "";
   let lastResult = null;
-  let lastBookName = "";
   let currentGameId = "";
   let castlingRights = 0;
   let epSquare = null;
@@ -67,77 +54,49 @@
     currentDetail = detail || "";
   }
 
-  function buildAnalysisCandidates(result, side) {
-    const candidates = (result?.alternatives?.length ? result.alternatives : result ? [result] : []).slice(0, 6);
-    const bestScore = candidates[0]?.score ?? result?.score ?? 0;
-
-    return candidates.map((move, index) => ({
-      move: moveName(move),
-      evaluation: result?.book
-        ? "Book"
-        : formatEvaluation(move.score, side, false, Boolean(result?.maia)),
-      loss: result?.book ? null : Math.max(0, move.loss ?? bestScore - move.score),
-      lossUnit: result?.maia ? "pp" : result?.book ? "book" : "cp",
-      category: arrowCategory(move, bestScore, move === result?.humanMove, Boolean(result?.book))
+  function buildAnalysisCandidates(result,side){
+    const candidates=(result?.alternatives?.length?result.alternatives:result?[result]:[]).slice(0,8);
+    const bestScore=candidates[0]?.score??result?.score??0;
+    return candidates.map(move=>({
+      move:moveName(move),
+      evaluation:formatEvaluation(move.score,side),
+      loss:Math.max(0,move.loss??bestScore-move.score),
+      lossUnit:"cp",
+      category:arrowCategory(move,bestScore)
     }));
   }
 
-  function analysisState() {
-    const result = lastResult;
-    if (!result || !sideToMove) {
-      return {
-        source: null,
-        evaluation: null,
-        mate: null,
-        pv: "",
-        bookName: "",
-        candidates: []
-      };
-    }
-
+  function analysisState(){
+    const result=lastResult;
+    if(!result||!sideToMove)return {source:null,evaluation:null,mate:null,pv:"",candidates:[]};
     return {
-      source: result.book
-        ? "Opening book"
-        : result.stockfish
-          ? "Stockfish 19 Lite"
-          : "Maia 3 • Human predictor",
-      evaluation: result.book
-        ? "BOOK"
-        : formatEvaluation(result.score, sideToMove, false, Boolean(result.maia)),
-      mate: result.mate ?? null,
-      pv: result.book ? "" : formatPrincipalVariation(result.pv),
-      bookName: result.bookName || "",
-      candidates: buildAnalysisCandidates(result, sideToMove)
+      source:"Stockfish 19 Lite Single",
+      evaluation:formatEvaluation(result.score,sideToMove),
+      mate:result.mate??null,
+      pv:formatPrincipalVariation(result.pv),
+      candidates:buildAnalysisCandidates(result,sideToMove)
     };
   }
 
-  function stateResponse() {
-    const analysis = analysisState();
+  function stateResponse(){
+    const analysis=analysisState();
     return {
-      ok: true,
-      status: currentStatus,
-      detail: currentDetail,
+      ok:true,
+      status:currentStatus,
+      detail:currentDetail,
       hidden,
       showAlternatives,
-      humanMode,
       humanRating,
       opponentRating,
       gameMode,
-      humanConfidence,
       playerSide,
       sideToMove,
-      isPlayerTurn: playerSide && sideToMove ? playerSide === sideToMove : null,
-      bookEnabled,
-      bookMode,
-      engineMode,
-      bookName: lastBookName,
-      gameId: currentGameId,
-      analysisSource: analysis.source,
-      analysisEvaluation: analysis.evaluation,
-      analysisMate: analysis.mate,
-      analysisPV: analysis.pv,
-      analysisBookName: analysis.bookName,
-      analysisCandidates: analysis.candidates
+      isPlayerTurn:playerSide&&sideToMove?playerSide===sideToMove:null,
+      analysisSource:analysis.source,
+      analysisEvaluation:analysis.evaluation,
+      analysisMate:analysis.mate,
+      analysisPV:analysis.pv,
+      analysisCandidates:analysis.candidates
     };
   }
 
@@ -145,119 +104,178 @@
     return document.querySelector("wc-chess-board.board, wc-chess-board");
   }
 
-  function getEngineWorker() {
-    if (engineWorker || engineWorkerFailed) return engineWorker;
+  
 
-    try {
-      engineWorker = new Worker(chrome.runtime.getURL("engine-worker.js"));
-      engineWorker.onmessage = event => {
-        const {taskId, ok, result, error} = event.data || {};
-        const pending = engineWorkerPending.get(taskId);
-        if (!pending) return;
-        engineWorkerPending.delete(taskId);
-        if (ok) pending.resolve(result);
-        else pending.reject(new Error(error || "Engine worker error."));
-      };
-      engineWorker.onerror = error => {
-        for (const pending of engineWorkerPending.values()) {
-          pending.reject(new Error(error.message || "Engine worker stopped."));
-        }
-        engineWorkerPending.clear();
-        engineWorker.terminate();
-        engineWorker = null;
-        engineWorkerFailed = true;
-      };
-      return engineWorker;
-    } catch {
-      engineWorker = null;
-      engineWorkerFailed = true;
-      return null;
+  
+
+
+
+  
+
+  
+
+  async function requestStockfish(fen,depth=16,alternativeCount=4){
+    if(!stockfishWorker){
+      stockfishWorker=new Worker(chrome.runtime.getURL("stockfish-19-lite-single.js"));
+      stockfishWorker.addEventListener("error",()=>{
+        try{stockfishWorker?.terminate();}catch{}
+        stockfishWorker=null;
+        stockfishReady=false;
+      });
     }
-  }
 
-  function requestEngineInBackground(type, payload) {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.runtime.sendMessage(
-          {
-            type: "engineTask",
-            task: type,
-            payload
-          },
-          response => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-              return;
-            }
-            if (!response?.ok) {
-              reject(new Error(response?.error || "Engine service unavailable."));
-              return;
-            }
-            resolve(response.result);
-          }
-        );
-      } catch (error) {
-        reject(error);
-      }
+    const worker=stockfishWorker;
+    const waitFor=(predicate,timeout=15000)=>new Promise((resolve,reject)=>{
+      const handler=event=>{
+        const line=typeof event.data==="string"?event.data.trim():String(event.data??"").trim();
+        if(!predicate(line))return;
+        clearTimeout(timer);
+        worker.removeEventListener("message",handler);
+        resolve(line);
+      };
+      const timer=setTimeout(()=>{
+        worker.removeEventListener("message",handler);
+        reject(new Error("Stockfish timed out waiting for engine response."));
+      },timeout);
+      worker.addEventListener("message",handler);
     });
-  }
 
-  let stockfishWorker = null;
-  let stockfishWorkerFailed = false;
-  let stockfishWorkerRequestId = 0;
-  const stockfishWorkerPending = new Map();
-
-  function getStockfishWorker() {
-    if (stockfishWorker || stockfishWorkerFailed) return stockfishWorker;
-
-    try {
-      stockfishWorker = new Worker(chrome.runtime.getURL("stockfish-worker.js"));
-      stockfishWorker.onmessage = event => {
-        const {taskId, ok, result, error} = event.data || {};
-        const pending = stockfishWorkerPending.get(taskId);
-        if (!pending) return;
-        stockfishWorkerPending.delete(taskId);
-        if (ok) pending.resolve(result);
-        else pending.reject(new Error(error || "Stockfish worker error."));
-      };
-      stockfishWorker.onerror = error => {
-        for (const pending of stockfishWorkerPending.values()) {
-          pending.reject(new Error(error.message || "Stockfish worker stopped."));
-        }
-        stockfishWorkerPending.clear();
-        stockfishWorker.terminate();
-        stockfishWorker = null;
-        stockfishWorkerFailed = true;
-      };
-      return stockfishWorker;
-    } catch {
-      stockfishWorker = null;
-      stockfishWorkerFailed = true;
-      return null;
+    if(!stockfishReady){
+      const uciok=waitFor(line=>line==="uciok");
+      worker.postMessage("uci");
+      await uciok;
+      const readyok=waitFor(line=>line==="readyok");
+      worker.postMessage("isready");
+      await readyok;
+      stockfishReady=true;
     }
-  }
 
-  function requestStockfish(fen, depth = 16, alternativeCount = 4) {
-    const worker = getStockfishWorker();
-    if (!worker) return Promise.reject(new Error("Stockfish worker is unavailable."));
+    const lines=new Map();
+    const parseMove=value=>{
+      if(!/^[a-h][1-8][a-h][1-8][nbrq]?$/i.test(value||""))return null;
+      const files="abcdefgh";
+      return {
+        from:(Number(value[1])-1)*8+files.indexOf(value[0].toLowerCase()),
+        to:(Number(value[3])-1)*8+files.indexOf(value[2].toLowerCase()),
+        promotion:value.length>4?value[4].toUpperCase():null
+      };
+    };
+    const scoreValue=(cp,mate)=>{
+      if(mate!==null){
+        const distance=Math.abs(mate);
+        return mate>=0?1000000-distance*2:-1000000+distance*2;
+      }
+      return cp;
+    };
+    const parseInfo=line=>{
+      const multipv=Number(line.match(/\bmultipv (\d+)/)?.[1]||1);
+      const depthValue=Number(line.match(/\bdepth (\d+)/)?.[1]||0);
+      const nodes=Number(line.match(/\bnodes (\d+)/)?.[1]||0);
+      const cpMatch=line.match(/\bscore cp (-?\d+)/);
+      const mateMatch=line.match(/\bscore mate (-?\d+)/);
+      const pvMatch=line.match(/\bpv (.+)$/);
+      if(!cpMatch&&!mateMatch)return;
+      const cp=cpMatch?Number(cpMatch[1]):null;
+      const mate=mateMatch?Number(mateMatch[1]):null;
+      const pv=pvMatch?pvMatch[1].trim().split(/\s+/).map(parseMove).filter(Boolean):[];
+      lines.set(multipv,{multipv,depth:depthValue,nodes,score:scoreValue(cp??0,mate),mate,pv});
+    };
 
-    return new Promise((resolve, reject) => {
-      const taskId = ++stockfishWorkerRequestId;
-      stockfishWorkerPending.set(taskId, {resolve, reject});
+    let resolveSearch,rejectSearch;
+    const completion=new Promise((resolve,reject)=>{
+      resolveSearch=resolve;
+      rejectSearch=reject;
+    });
+    const handler=event=>{
+      const line=typeof event.data==="string"?event.data.trim():String(event.data??"").trim();
+      if(!line)return;
+      if(line.startsWith("info "))parseInfo(line);
+      if(line.startsWith("bestmove "))resolveSearch(line.split(/\s+/)[1]||"");
+    };
+    worker.addEventListener("message",handler);
 
-      try {
-        worker.postMessage({
-          type: "stockfishSearch",
-          taskId,
-          fen,
-          depth,
-          multiPV: alternativeCount
+    const timeout=setTimeout(()=>{
+      try{worker.postMessage("stop");}catch{}
+      rejectSearch(new Error("Stockfish search timed out."));
+    },30000);
+
+    try{
+      worker.postMessage("ucinewgame");
+      worker.postMessage("setoption name MultiPV value "+Math.max(1,Math.min(8,Number(alternativeCount)||4)));
+
+      const readyok=waitFor(line=>line==="readyok");
+      worker.postMessage("isready");
+      await readyok;
+
+      worker.postMessage("position fen "+fen);
+      worker.postMessage("go depth "+Math.max(1,Math.min(30,Number(depth)||16)));
+
+      const bestmove=await completion;
+      const entries=[...lines.values()].sort((a,b)=>a.multipv-b.multipv);
+      const bestInfo=entries[0]||null;
+      const fallback=parseMove(bestmove);
+
+      if(!fallback)return {
+        gameState:"no-move",
+        from:null,
+        to:null,
+        promotion:null,
+        score:0,
+        mate:null,
+        pv:[],
+        depth:bestInfo?.depth||Number(depth)||0,
+        nodes:bestInfo?.nodes||0,
+        alternatives:[],
+        stockfish:true,
+        model:"Stockfish 19 Lite Single"
+      };
+
+      const baseScore=bestInfo?.score??0;
+      const alternatives=entries.slice(0,8).map((entry,index)=>{
+        const firstMove=entry.pv[0]||(index===0?fallback:null);
+        if(!firstMove)return null;
+        return {
+          ...firstMove,
+          score:entry.score,
+          loss:Math.max(0,baseScore-entry.score),
+          mate:entry.mate,
+          rank:index+1,
+          depth:entry.depth,
+          nodes:entry.nodes
+        };
+      }).filter(Boolean);
+
+      if(!alternatives.length){
+        alternatives.push({
+          ...fallback,
+          score:baseScore,
+          loss:0,
+          mate:bestInfo?.mate??null,
+          rank:1,
+          depth:bestInfo?.depth||Number(depth)||0,
+          nodes:bestInfo?.nodes||0
         });
-      } catch (error) {
-        stockfishWorkerPending.delete(taskId);
-        reject(error);
       }
-    });
+
+      const best=alternatives[0];
+      return {
+        gameState:"playing",
+        from:best.from,
+        to:best.to,
+        promotion:best.promotion,
+        score:best.score,
+        mate:best.mate??null,
+        pv:bestInfo?.pv||[fallback],
+        depth:bestInfo?.depth||Number(depth)||0,
+        nodes:bestInfo?.nodes||0,
+        alternatives,
+        stockfish:true,
+        model:"Stockfish 19 Lite Single"
+      };
+    }finally{
+      clearTimeout(timeout);
+      worker.removeEventListener("message",handler);
+    }
   }
 
   function positionToFen(position, side, rights, ep) {
@@ -299,34 +317,9 @@
     return ranks.join("/") + " " + side + " " + (castling || "-") + " " + epSquare + " 0 1";
   }
 
-  function isLiveGamePage() {
-    return /^\/(?:game\/live|live\/game)\//.test(location.pathname);
-  }
+  
 
-  function requestEngine(type, payload) {
-    const worker = getEngineWorker();
-
-    if (!worker) return requestEngineInBackground(type, payload);
-
-    return new Promise((resolve, reject) => {
-      const taskId = ++engineWorkerRequestId;
-      engineWorkerPending.set(taskId, {resolve, reject});
-
-      try {
-        worker.postMessage({type, taskId, ...payload});
-      } catch (error) {
-        engineWorkerPending.delete(taskId);
-        engineWorker = null;
-        engineWorkerFailed = true;
-        requestEngineInBackground(type, payload).then(resolve, reject);
-      }
-    }).catch(error => {
-      engineWorker = null;
-      return requestEngineInBackground(type, payload).catch(fallbackError => {
-        throw new Error(error.message + " | " + fallbackError.message);
-      });
-    });
-  }
+  
 
   function scheduleScan(force = false) {
     if (scanTimer !== null) clearTimeout(scanTimer);
@@ -549,25 +542,21 @@
     board.querySelector(".cmh-eval-bar")?.remove();
   }
 
-  function formatEvaluation(score, side, isBook, isMaia = false) {
-    if (isBook) return "B " + Math.round(score);
-    if (isMaia) return (Math.max(0, Math.min(1000, Number(score) || 0)) / 10).toFixed(1) + "%";
-    const whiteScore = side === "w" ? score : -score;
-    if (whiteScore >= 990000 || whiteScore <= -990000) {
-      const mateMoves = Math.max(1, Math.ceil((1000000 - Math.abs(whiteScore)) / 2));
-      return (whiteScore >= 0 ? "+" : "-") + "M" + mateMoves;
+  function formatEvaluation(score,side){
+    const whiteScore=side==="w"?score:-score;
+    if(whiteScore>=990000||whiteScore<=-990000){
+      const mateMoves=Math.max(1,Math.ceil((1000000-Math.abs(whiteScore))/2));
+      return (whiteScore>=0?"+":"-")+"M"+mateMoves;
     }
-    const pawns = whiteScore / 100;
-    return (pawns >= 0 ? "+" : "") + pawns.toFixed(2);
+    const pawns=whiteScore/100;
+    return (pawns>=0?"+":"")+pawns.toFixed(2);
   }
 
-  function formatCandidateEvaluation(score, side, isBook, bestScore, isMaia = false) {
-    const value = formatEvaluation(score, side, isBook, isMaia);
-    if (isBook || !Number.isFinite(bestScore) || !Number.isFinite(score)) return value;
-    const loss = Math.max(0, bestScore - score);
-    return loss > 0
-      ? value + " (-" + (isMaia ? (loss / 10).toFixed(1) + "pp" : (loss / 100).toFixed(2)) + ")"
-      : value;
+  function formatCandidateEvaluation(score,side,isBook,bestScore){
+    const value=formatEvaluation(score,side);
+    if(!Number.isFinite(bestScore)||!Number.isFinite(score))return value;
+    const loss=Math.max(0,bestScore-score);
+    return loss>0?value+" (-"+(loss/100).toFixed(2)+")":value;
   }
 
   function evaluationPercent(score, side) {
@@ -575,15 +564,7 @@
     return Math.max(0.02, Math.min(0.98, 0.5 + 0.5 * Math.tanh(whiteScore / 400)));
   }
 
-  function estimateHumanConfidence(result, side) {
-    if (result.book || result.maia || playerSide !== side) return null;
-    const userScore = result.score;
-    if (userScore >= 990000) return 95;
-    if (userScore <= -990000) return 5;
-    const ratingEdge = Math.max(-300, Math.min(300, (Number(humanRating) || 1600) - (Number(opponentRating) || 1600)));
-    const adjustedScore = userScore + ratingEdge * 0.08;
-    return Math.max(5, Math.min(95, Math.round(50 + 45 * Math.tanh(adjustedScore / 350))));
-  }
+  
 
   function parseRatingValue(raw) {
     const match = String(raw || "").replace(/,/g, "").match(/\b(\d{3,4})\b/);
@@ -771,259 +752,103 @@
     return classifyGameMode(document.body?.innerText);
   }
 
-  function chooseHumanCandidate(result, side) {
-    if (playerSide !== side) return null;
+  
 
-    const candidates = (result.alternatives?.length
-      ? result.alternatives
-      : [result]).slice(0, 8);
+  
 
-    if (candidates.length <= 1) return candidates[0];
-
-    const rating = Math.max(800, Math.min(2800, Number(humanRating) || 1600));
-    const enemyRating = Math.max(800, Math.min(2800, Number(opponentRating) || rating));
-    const ratingGap = Math.max(-400, Math.min(400, enemyRating - rating));
-    const modeBoost = ({Bullet: -35, Blitz: -10, Rapid: 25, Classical: 45})[gameMode] || 0;
-    const effectiveRating = Math.max(
-      800,
-      Math.min(3000, rating + ratingGap * 0.2 + modeBoost + 100)
-    );
-    const skill = (effectiveRating - 800) / 2200;
-    const lossScale = 62 - skill * 30;
-    const maxLoss = 125 - skill * 70;
-    const bookSpread = 3.0 - skill * 1.3;
-    const bestScore = result.score;
-    const distinctPool = candidates.length > 1
-      ? candidates.filter(move => move !== candidates[0])
-      : candidates;
-
-    if (!result.book) {
-      const safePool = distinctPool.filter(move => bestScore - move.score <= maxLoss);
-      const pool = safePool.length ? safePool : distinctPool.slice().sort((a, b) =>
-        (bestScore - a.score) - (bestScore - b.score)
-      ).slice(0, 1);
-      const targetLoss = Math.max(5, Math.min(maxLoss, 65 - skill * 55));
-      const weighted = pool.map((move, index) => {
-        const loss = Math.max(0, bestScore - move.score);
-        return {
-          move,
-          weight: Math.exp(-Math.abs(loss - targetLoss) / lossScale) / Math.pow(index + 1, 0.35)
-        };
-      });
-      const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
-      let threshold = Math.random() * total;
-
-      for (const entry of weighted) {
-        threshold -= entry.weight;
-        if (threshold <= 0) return entry.move;
-      }
-
-      return weighted[weighted.length - 1].move;
-    }
-
-    const weighted = distinctPool.map((move, index) => ({
-      move,
-      weight: Math.exp(-index / bookSpread)
-    }));
-    const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
-    let threshold = Math.random() * total;
-
-    for (const entry of weighted) {
-      threshold -= entry.weight;
-      if (threshold <= 0) return entry.move;
-    }
-
-    return weighted[weighted.length - 1].move;
-  }
-
-  function getHumanDisplayMoves(result, side) {
-    const candidates = (result.alternatives?.length
-      ? result.alternatives
-      : [result]).slice(0, 8);
-    const humanMove = result.humanMove || chooseHumanCandidate(result, side);
-    const bestMove = candidates[0];
-    const used = new Set();
-    const output = [];
-
-    const add = (move, category) => {
-      if (!move || used.has(move.from + ":" + move.to + ":" + (move.promotion || ""))) return;
-      used.add(move.from + ":" + move.to + ":" + (move.promotion || ""));
-      output.push({move, category});
-    };
-
-    add(bestMove, "best");
-
-    const goodMove = candidates.find(move =>
-      move !== bestMove &&
-      bestMove.score - move.score > 20 &&
-      bestMove.score - move.score <= 50
-    );
-    add(goodMove, "good");
-
-    const okMove = candidates.find(move => {
-      const loss = bestMove.score - move.score;
-      return move !== bestMove && move !== humanMove && loss > 50 && loss <= 100;
-    });
-    add(okMove, "ok");
-
-    add(humanMove, "human");
-
-    const mistakeMove = candidates.find(move => {
-      const loss = bestMove.score - move.score;
-      return move !== bestMove && move !== humanMove && loss > 100 && loss <= 250;
-    });
-    add(mistakeMove, "mistake");
-
-    const blunderMove = candidates.find(move => {
-      const loss = bestMove.score - move.score;
-      return move !== bestMove && move !== humanMove && loss > 250;
-    });
-    add(blunderMove, "blunder");
-
-    return {moves: output, humanMove};
-  }
-
-  function drawEvaluationBar(board, result, side, orientation) {
+  function drawEvaluationBar(board,result,side,orientation){
     board.querySelector(".cmh-eval-bar")?.remove();
-    if (hidden) return;
-
-    const bar = document.createElement("div");
+    if(hidden)return;
+    const bar=document.createElement("div");
     bar.classList.add("cmh-eval-bar");
-    if (orientation.flipped) bar.classList.add("cmh-flipped");
-
-    const blackFill = document.createElement("div");
-    blackFill.classList.add("cmh-eval-bar-black");
-    bar.appendChild(blackFill);
-
-    if (!result.book) {
-      const whiteRatio = result.maia
-        ? Math.max(0.02, Math.min(0.98, (Number(result.score) || 0) / 1000))
-        : evaluationPercent(result.score, side);
-      const whiteFill = document.createElement("div");
-      whiteFill.classList.add("cmh-eval-bar-white");
-      whiteFill.style.height = (whiteRatio * 100) + "%";
-      if (orientation.flipped) {
-        whiteFill.style.top = "0";
-        whiteFill.style.bottom = "auto";
-      }
-      bar.appendChild(whiteFill);
-
-      const score = document.createElement("span");
-      score.classList.add("cmh-eval-bar-score");
-      score.textContent = formatEvaluation(result.score, side, false, Boolean(result.maia));
-      score.style.top = ((orientation.flipped ? whiteRatio : 1 - whiteRatio) * 100) + "%";
-      bar.appendChild(score);
-    } else {
-      bar.classList.add("cmh-eval-book");
-    }
-
+    if(orientation.flipped)bar.classList.add("cmh-flipped");
+    const whiteRatio=evaluationPercent(result.score,side);
+    const whiteFill=document.createElement("div");
+    whiteFill.classList.add("cmh-eval-bar-white");
+    whiteFill.style.height=(whiteRatio*100)+"%";
+    if(orientation.flipped){whiteFill.style.top="0";whiteFill.style.bottom="auto";}
+    bar.appendChild(whiteFill);
+    const score=document.createElement("span");
+    score.classList.add("cmh-eval-bar-score");
+    score.textContent=formatEvaluation(result.score,side);
+    score.style.top=((orientation.flipped?whiteRatio:1-whiteRatio)*100)+"%";
+    bar.appendChild(score);
     board.appendChild(bar);
   }
 
-  function drawArrows(board, result, side = getSideToMove()) {
+  function drawArrows(board,result,side=getSideToMove()){
     clearArrows(board);
-    if (hidden) return;
-
-    const candidates = (result.alternatives?.length
-      ? result.alternatives
-      : [result]).slice(0, 8);
-    const bestScore = candidates[0]?.score ?? result.score;
-    const studySet = humanMode ? getHumanDisplayMoves(result, side) : null;
-    const humanMove = result.humanMove || (humanMode ? studySet?.humanMove : null);
-    const moves = humanMode
-      ? studySet.moves.map(entry => entry.move)
-      : (showAlternatives ? candidates : [candidates[0]]);
-    const entries = humanMode
-      ? studySet.moves.map((entry, index) => ({
-        move: entry.move,
-        index,
-        isHumanPick: entry.category === "human",
-        category: entry.category
-      }))
-      : moves.map((move, index) => ({
-        move,
-        index,
-        isHumanPick: false,
-        category: arrowCategory(move, bestScore, false, result.book)
-      }));
-    const drawEntries = entries.sort((a, b) => {
-      if (a.index === 0) return 1;
-      if (b.index === 0) return -1;
-      return a.index - b.index;
-    });
-    const orientation = getOrientation(board);
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    if(hidden)return;
+    const candidates=(result.alternatives?.length?result.alternatives:[result]).slice(0,8);
+    const bestScore=candidates[0]?.score??result.score;
+    const orientation=getOrientation(board);
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
     svg.classList.add("cmh-arrow-layer");
-    svg.setAttribute("viewBox", "0 0 100 100");
-    svg.setAttribute("shape-rendering", "geometricPrecision");
+    svg.setAttribute("viewBox","0 0 100 100");
+    svg.setAttribute("shape-rendering","geometricPrecision");
+    const defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
+    const categories=[...new Set(candidates.map(move=>arrowCategory(move,bestScore)))];
+    drawEvaluationBar(board,result,side,orientation);
 
-    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    const categories = [...new Set(entries.map(entry => entry.category))];
-    drawEvaluationBar(board, result, side, orientation);
-    for (const category of categories) {
-      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-      marker.setAttribute("id", "cmh-arrow-head-" + category);
-      marker.setAttribute("viewBox", "0 0 10 10");
-      marker.setAttribute("refX", "8.5");
-      marker.setAttribute("refY", "5");
-      marker.setAttribute("markerWidth", "5");
-      marker.setAttribute("markerHeight", "5");
-      marker.setAttribute("orient", "auto");
-
-      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      head.classList.add("cmh-arrow-head", "cmh-" + category);
-      head.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-      head.style.setProperty("fill", ARROW_COLORS[category], "important");
+    for(const category of categories){
+      const marker=document.createElementNS("http://www.w3.org/2000/svg","marker");
+      marker.setAttribute("id","cmh-arrow-head-"+category);
+      marker.setAttribute("viewBox","0 0 10 10");
+      marker.setAttribute("refX","8.5");
+      marker.setAttribute("refY","5");
+      marker.setAttribute("markerWidth","5");
+      marker.setAttribute("markerHeight","5");
+      marker.setAttribute("orient","auto");
+      const head=document.createElementNS("http://www.w3.org/2000/svg","path");
+      head.classList.add("cmh-arrow-head","cmh-"+category);
+      head.setAttribute("d","M 0 0 L 10 5 L 0 10 z");
+      head.style.setProperty("fill",ARROW_COLORS[category],"important");
       marker.appendChild(head);
       defs.appendChild(marker);
     }
+
     svg.appendChild(defs);
+    candidates.forEach(move=>{
+      const category=arrowCategory(move,bestScore);
+      const color=ARROW_COLORS[category];
+      const source=indexToSquare(move.from);
+      const target=indexToSquare(move.to);
+      const sourceX=orientation.flipped?7-source.file:source.file;
+      const targetX=orientation.flipped?7-target.file:target.file;
+      const sourceY=orientation.flipped?source.rank-1:8-source.rank;
+      const targetY=orientation.flipped?target.rank-1:8-target.rank;
+      const sourcePoint={x:sourceX*12.5+6.25,y:sourceY*12.5+6.25};
+      const targetPoint={x:targetX*12.5+6.25,y:targetY*12.5+6.25};
 
-    drawEntries.forEach(entry => {
-      const {move, isHumanPick, category} = entry;
-      const color = ARROW_COLORS[category];
-
-      const source = indexToSquare(move.from);
-      const target = indexToSquare(move.to);
-
-      const sourceX = orientation.flipped ? 7 - source.file : source.file;
-      const targetX = orientation.flipped ? 7 - target.file : target.file;
-      const sourceY = orientation.flipped ? source.rank - 1 : 8 - source.rank;
-      const targetY = orientation.flipped ? target.rank - 1 : 8 - target.rank;
-
-      const sourcePoint = { x: sourceX * 12.5 + 6.25, y: sourceY * 12.5 + 6.25 };
-      const targetPoint = { x: targetX * 12.5 + 6.25, y: targetY * 12.5 + 6.25 };
-
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(sourcePoint.x));
-      line.setAttribute("y1", String(sourcePoint.y));
-      line.setAttribute("x2", String(targetPoint.x));
-      line.setAttribute("y2", String(targetPoint.y));
-      line.setAttribute("marker-end", "url(#cmh-arrow-head-" + category + ")");
-      line.classList.add("cmh-arrow", "cmh-" + category);
-      line.style.setProperty("stroke", color, "important");
+      const line=document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1",String(sourcePoint.x));
+      line.setAttribute("y1",String(sourcePoint.y));
+      line.setAttribute("x2",String(targetPoint.x));
+      line.setAttribute("y2",String(targetPoint.y));
+      line.setAttribute("marker-end","url(#cmh-arrow-head-"+category+")");
+      line.classList.add("cmh-arrow","cmh-"+category);
+      line.style.setProperty("stroke",color,"important");
       svg.appendChild(line);
 
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      const dx = targetPoint.x - sourcePoint.x;
-      const dy = targetPoint.y - sourcePoint.y;
-      const length = Math.hypot(dx, dy) || 1;
-      const normalX = -dy / length;
-      const normalY = dx / length;
-      const labelX = Math.max(7, Math.min(93, (sourcePoint.x + targetPoint.x) / 2 + normalX * 2.3));
-      const labelY = Math.max(5, Math.min(95, (sourcePoint.y + targetPoint.y) / 2 + normalY * 2.3));
-      label.setAttribute("x", String(labelX));
-      label.setAttribute("y", String(labelY));
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("dominant-baseline", "middle");
-      label.textContent = formatCandidateEvaluation(move.score, side, result.book, bestScore, Boolean(result.maia));
-      label.classList.add("cmh-eval-label", "cmh-" + category);
-      label.style.setProperty("fill", color, "important");
+      const label=document.createElementNS("http://www.w3.org/2000/svg","text");
+      const dx=targetPoint.x-sourcePoint.x;
+      const dy=targetPoint.y-sourcePoint.y;
+      const length=Math.hypot(dx,dy)||1;
+      const normalX=-dy/length;
+      const normalY=dx/length;
+      const labelX=Math.max(7,Math.min(93,(sourcePoint.x+targetPoint.x)/2+normalX*2.3));
+      const labelY=Math.max(5,Math.min(95,(sourcePoint.y+targetPoint.y)/2+normalY*2.3));
+      label.setAttribute("x",String(labelX));
+      label.setAttribute("y",String(labelY));
+      label.setAttribute("text-anchor","middle");
+      label.setAttribute("dominant-baseline","middle");
+      label.textContent=formatCandidateEvaluation(move.score,side,false,bestScore);
+      label.classList.add("cmh-eval-label","cmh-"+category);
+      label.style.setProperty("fill",color,"important");
       svg.appendChild(label);
     });
 
-    if (entries.length) board.appendChild(svg);
+    if(candidates.length)board.appendChild(svg);
   }
 
   function getPositionKey(position, side) {
@@ -1042,336 +867,163 @@
     return (pv || []).map(moveName).join(" ");
   }
 
-  function getMaiaRatings(side) {
-    const player = Math.max(600, Math.min(2600, Number(humanRating) || 1500));
-    const opponent = Math.max(600, Math.min(2600, Number(opponentRating) || 1500));
+  
 
-    if (playerSide && side === playerSide) {
-      return {selfElo: player, oppoElo: opponent};
-    }
+  
 
-    if (playerSide && side !== playerSide) {
-      return {selfElo: opponent, oppoElo: player};
-    }
+  async function scan(force=false){
+    if(busy){scanQueuedWhileBusy=true;return stateResponse();}
+    busy=true;
 
-    return {selfElo: player, oppoElo: opponent};
-  }
-
-  async function lookupBook(position, side) {
-    if (!bookEnabled) return null;
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "bookLookup",
-        position,
-        side,
-        bookMode,
-        castlingRights,
-        epFile: Number.isInteger(epSquare) ? epSquare & 7 : null
-      });
-
-      if (!response?.ok || !response.found || !response.moves?.length) return null;
-
-      return {
-        from: response.moves[0].from,
-        to: response.moves[0].to,
-        promotion: response.moves[0].promotion,
-        score: response.moves[0].score,
-        alternatives: response.moves,
-        book: true,
-        bookName: response.name,
-        bookSourceId: response.sourceId
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  async function scan(force = false) {
-    if (busy) {
-      scanQueuedWhileBusy = true;
-      return stateResponse();
-    }
-    busy = true;
-
-    try {
-      const gameId = getGameId();
-      if (gameId !== currentGameId) {
-        currentGameId = gameId;
-        lastPositionKey = "";
-        lastResult = null;
-        lastBookName = "";
-        castlingRights = 0;
-        epSquare = null;
-        humanRating = null;
-        opponentRating = null;
-        gameMode = null;
-        humanConfidence = null;
-        playerSide = null;
-        sideToMove = null;
-        stateInitialized = false;
-        lastObservedPosition = null;
-        const existingBoard = getBoardElement();
-        if (existingBoard) clearArrows(existingBoard);
+    try{
+      const gameId=getGameId();
+      if(gameId!==currentGameId){
+        currentGameId=gameId;
+        lastPositionKey="";
+        lastResult=null;
+        humanRating=null;
+        opponentRating=null;
+        gameMode=null;
+        playerSide=null;
+        sideToMove=null;
+        castlingRights=0;
+        epSquare=null;
+        stateInitialized=false;
+        lastObservedPosition=null;
+        const existingBoard=getBoardElement();
+        if(existingBoard)clearArrows(existingBoard);
       }
 
-      const board = getBoardElement();
+      const board=getBoardElement();
       observeBoard(board);
-      if (!board) {
-        setStatus("No chessboard", "This page does not currently contain a Chess.com board.");
+      if(!board){
+        setStatus("No chessboard","This page does not currently contain a Chess.com board.");
         return stateResponse();
       }
 
       refreshMetadata(board);
+      const fenState=readFenState(board);
+      const position=fenState?.position||readPosition(board);
 
-      const fenState = readFenState(board);
-      const position = fenState?.position || readPosition(board);
-      const pieceCount = position.filter(Boolean).length;
-      if (!pieceCount) {
+      if(!position.filter(Boolean).length){
         clearArrows(board);
-        setStatus("Board not loaded", "Waiting for the pieces to appear.");
+        setStatus("Board not loaded","Waiting for the pieces to appear.");
         return stateResponse();
       }
 
-      const side = fenState?.side || getSideToMove();
-      sideToMove = side;
-      if (fenState) {
-        castlingRights = fenState.castlingRights;
-        epSquare = fenState.epSquare;
-        stateInitialized = true;
-        lastObservedPosition = position.slice();
-      } else {
+      const side=fenState?.side||getSideToMove();
+      sideToMove=side;
+
+      if(/^\/(?:game\/live|live\/game)\//.test(location.pathname)){
+        clearArrows(board);
+        lastResult=null;
+        lastPositionKey=getPositionKey(position,side);
+        setStatus("Analysis disabled on Live Chess","Use the Analysis board or a supported bot game.");
+        return stateResponse();
+      }
+
+      if(fenState){
+        castlingRights=fenState.castlingRights;
+        epSquare=fenState.epSquare;
+        stateInitialized=true;
+        lastObservedPosition=position.slice();
+      }else{
         updatePositionState(position);
       }
 
-      const key = getPositionKey(position, side);
+      const key=getPositionKey(position,side);
+      if(force)lastPositionKey="";
 
-      if (engineMode === "stockfish" && isLiveGamePage()) {
-        clearArrows(board);
-        lastResult = null;
-        lastBookName = "";
-        lastPositionKey = key;
-        setStatus("Stockfish disabled for Live Chess", "Use the Analysis board or a supported bot game.");
+      if(key===lastPositionKey&&board.querySelector(".cmh-arrow-layer")&&lastResult?.stockfish){
         return stateResponse();
       }
 
-      if (force) {
-        lastPositionKey = "";
-        lastBookName = "";
-      }
+      setStatus("Stockfish thinking...","Analyzing with Stockfish 19 Lite Single.");
+      await new Promise(resolve=>setTimeout(resolve,0));
 
-      if (key === lastPositionKey && board.querySelector(".cmh-arrow-layer") &&
-          (lastResult?.book || lastResult?.maia)) return stateResponse();
-
-      setStatus("Thinking...", "Checking the opening book before Maia search.");
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      const bookResult = await lookupBook(position, side);
-      let result = bookResult;
-
-      if (!result) {
-        try {
-          if (engineMode === "stockfish") {
-            const fen = board.getAttribute("data-cmh-fen") ||
-              positionToFen(position, side, castlingRights, epSquare);
-            result = await requestStockfish(fen, 16, humanMode ? 8 : 4);
-          } else {
-            const maiaRatings = getMaiaRatings(side);
-            result = await requestEngine("maiaSearch", {
-              position,
-              side,
-              alternativeCount: humanMode ? 8 : 4,
-              castlingRights,
-              epSquare,
-              selfElo: maiaRatings.selfElo,
-              oppoElo: maiaRatings.oppoElo
-            });
-          }
-        } catch (error) {
-          setStatus("Maia unavailable", error.message);
-          return stateResponse();
-        }
-      }
-
-      if (!result) {
-        clearArrows(board);
-        lastResult = null;
-        lastBookName = "";
-        lastPositionKey = key;
-        setStatus("No legal move", "The current position has no legal move available.");
+      let result;
+      try{
+        const fen=board.getAttribute("data-cmh-fen")||positionToFen(position,side,castlingRights,epSquare);
+        result=await requestStockfish(fen,16,showAlternatives?4:1);
+      }catch(error){
+        setStatus("Stockfish unavailable",error.message);
         return stateResponse();
       }
 
-      if (result.gameState === "checkmate" || result.gameState === "stalemate" || result.gameState === "no-move") {
+      if(!result||result.gameState==="no-move"){
         clearArrows(board);
-        lastResult = null;
-        lastBookName = "";
-        lastPositionKey = key;
-        setStatus(
-          result.gameState === "checkmate" ? "Checkmate" : result.gameState === "stalemate" ? "Stalemate" : "No legal move",
-          "No legal moves remain."
-        );
+        lastResult=null;
+        lastPositionKey=key;
+        setStatus("No legal move","The current position has no legal move available.");
         return stateResponse();
       }
 
-      const latestFenState = readFenState(board);
-      const latestPosition = latestFenState?.position || readPosition(board);
-      const latestSide = latestFenState?.side || getSideToMove();
-      const latestKey = latestPosition.filter(Boolean).length
-        ? getPositionKey(latestPosition, latestSide)
-        : null;
-      if (latestKey && latestKey !== key) {
+      if(result.gameState==="checkmate"||result.gameState==="stalemate"){
+        clearArrows(board);
+        lastResult=null;
+        lastPositionKey=key;
+        setStatus(result.gameState==="checkmate"?"Checkmate":"Stalemate","No legal moves remain.");
+        return stateResponse();
+      }
+
+      const latestFenState=readFenState(board);
+      const latestPosition=latestFenState?.position||readPosition(board);
+      const latestSide=latestFenState?.side||getSideToMove();
+      const latestKey=latestPosition.filter(Boolean).length?getPositionKey(latestPosition,latestSide):null;
+      if(latestKey&&latestKey!==key){
         scheduleScan();
         return stateResponse();
       }
 
-      const isPlayerTurn = playerSide === side;
-      humanConfidence = humanMode && isPlayerTurn ? estimateHumanConfidence(result, side) : null;
-      const humanMove = humanMode && isPlayerTurn ? chooseHumanCandidate(result, side) : null;
-      const displayResult = humanMode
-        ? {...result, humanMove}
-        : result;
-      lastResult = displayResult;
-      lastBookName = result.bookName || "";
-      drawArrows(board, displayResult, side);
-      lastPositionKey = key;
+      lastResult=result;
+      drawArrows(board,result,side);
+      lastPositionKey=key;
 
-      const turnDetail = playerSide
-        ? (isPlayerTurn ? "Your turn" : "Opponent turn")
-        : ("Side to move " + (side === "w" ? "White" : "Black"));
+      const turnDetail=playerSide
+        ? (playerSide===side?"Your turn":"Opponent turn")
+        : ("Side to move "+(side==="w"?"White":"Black"));
 
-      if (result.book) {
-        setStatus(
-          humanMode ? "Study candidates" : "Book " + moveName(result),
-          turnDetail + " • " + (result.bookName || "Opening book") + " • " + (result.alternatives?.length || 1) + " book moves"
-        );
-      } else if (result.stockfish) {
-        setStatus(
-          humanMode ? "Stockfish study candidates" : "Stockfish " + moveName(result),
-          turnDetail +
-            " • Stockfish 19 Lite" +
-            " • depth " + (result.depth || 0) +
-            " • " + (result.alternatives?.length || 1) + " candidates"
-        );
-      } else if (result.maia) {
-        setStatus(
-          humanMode ? "Maia study candidates" : "Maia " + moveName(result),
-          turnDetail +
-            " • Maia 3 5M" +
-            " • " + (result.alternatives?.length || 1) + " candidates" +
-            (humanMode && humanRating ? " • Rating " + humanRating : "") +
-            (humanMode && opponentRating ? " • Opponent " + opponentRating : "") +
-            (humanMode && gameMode ? " • " + gameMode : "")
-        );
-      } else {
-        setStatus(
-          humanMode ? "Study candidates" : "Maia " + moveName(result),
-          turnDetail +
-            " • Maia 3 5M" +
-            " • " + (result.alternatives?.length || 1) + " candidates" +
-            (humanMode && humanRating ? " • Rating " + humanRating : "") +
-            (humanMode && opponentRating ? " • Opponent " + opponentRating : "") +
-            (humanMode && gameMode ? " • " + gameMode : "")
-        );
-      }
-
+      setStatus(
+        "Stockfish "+moveName(result),
+        turnDetail+" • Stockfish 19 Lite Single • depth "+(result.depth||0)+" • "+(result.alternatives?.length||1)+" candidates"
+      );
       return stateResponse();
-    } finally {
-      busy = false;
-      if (scanQueuedWhileBusy) {
-        scanQueuedWhileBusy = false;
+    }finally{
+      busy=false;
+      if(scanQueuedWhileBusy){
+        scanQueuedWhileBusy=false;
         scheduleScan();
       }
     }
   }
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type === "getState") {
+  chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+    if(message?.type==="getState"){
       sendResponse(stateResponse());
       return;
     }
-
-    if (message?.type === "scan") {
-      scan(true)
-        .then(sendResponse)
-        .catch(error => sendResponse({ ok: false, error: error.message }));
+    if(message?.type==="scan"){
+      scan(true).then(sendResponse).catch(error=>sendResponse({ok:false,error:error.message}));
       return true;
     }
-
-    if (message?.type === "setHidden") {
-      hidden = Boolean(message.value);
-      const board = getBoardElement();
-      if (hidden) {
-        if (board) clearArrows(board);
-        setStatus("Arrows hidden", "The local engine is still running.");
-      } else if (board && lastResult) {
-        drawArrows(board, lastResult, getSideToMove());
-        setStatus(
-          lastResult.book
-            ? (humanMode ? "Study candidates" : "Book " + moveName(lastResult))
-            : lastResult.stockfish
-              ? (humanMode ? "Stockfish study candidates" : "Stockfish " + moveName(lastResult))
-              : lastResult.maia
-                ? (humanMode ? "Maia study candidates" : "Maia " + moveName(lastResult))
-                : (humanMode ? "Study candidates" : "Best " + moveName(lastResult)),
-          lastResult.book
-            ? (lastResult.bookName || "Opening book")
-            : lastResult.stockfish
-              ? "Stockfish 19 Lite"
-              : "Maia 3 5M"
-        );
+    if(message?.type==="setHidden"){
+      hidden=Boolean(message.value);
+      const board=getBoardElement();
+      if(hidden){
+        if(board)clearArrows(board);
+        setStatus("Arrows hidden","Stockfish remains available for manual analysis.");
+      }else if(board&&lastResult){
+        drawArrows(board,lastResult,getSideToMove());
+        setStatus("Stockfish "+moveName(lastResult),"Stockfish 19 Lite Single");
       }
       sendResponse(stateResponse());
       return;
     }
-
-    if (message?.type === "setHumanMode") {
-      humanMode = Boolean(message.value);
-      lastPositionKey = "";
-      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
-      return true;
-    }
-
-    if (message?.type === "setAlternatives") {
-      showAlternatives = Boolean(message.value);
-      const board = getBoardElement();
-      if (board && lastResult && !hidden) drawArrows(board, lastResult, getSideToMove());
+    if(message?.type==="setAlternatives"){
+      showAlternatives=Boolean(message.value);
+      const board=getBoardElement();
+      if(board&&lastResult&&!hidden)drawArrows(board,lastResult,getSideToMove());
       sendResponse(stateResponse());
-      return;
-    }
-
-    if (message?.type === "setEngineMode") {
-      const nextEngineMode = message.value === "stockfish" ? "stockfish" : "maia";
-      if (nextEngineMode !== engineMode) {
-        engineMode = nextEngineMode;
-        lastPositionKey = "";
-        lastResult = null;
-        lastBookName = "";
-      }
-      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
-      return true;
-    }
-
-    if (message?.type === "setBookEnabled") {
-      bookEnabled = Boolean(message.value);
-      lastPositionKey = "";
-      scan().then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
-      return true;
-    }
-
-    if (message?.type === "setBookMode") {
-      bookMode = message.value || "random";
-      lastPositionKey = "";
-      lastBookName = "";
-      scan(true).then(() => sendResponse(stateResponse())).catch(error => sendResponse({ok: false, error: error.message}));
-      return true;
-    }
-
-    if (message?.type === "bookChanged") {
-      lastPositionKey = "";
-      lastBookName = "";
-      scan(true).catch(() => {});
-      sendResponse({ok: true});
       return;
     }
   });

@@ -1,14 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Chess Move Helper",
-  "version": "1.5.0",
-  "description": "Scans Chess.com boards and uses Maia 3 as the move predictor with optional randomized Polyglot opening books.",
+  "version": "1.6.0",
+  "description": "Analyzes supported Chess.com positions with Stockfish 19 Lite Single.",
   "action": {
     "default_title": "Chess Move Helper",
     "default_popup": "popup.html"
-  },
-  "background": {
-    "service_worker": "background.js"
   },
   "content_scripts": [
     {
@@ -35,17 +32,13 @@
     }
   ],
   "host_permissions": [
-    "https://www.chess.com/*",
-    "https://raw.githubusercontent.com/*"
+    "https://www.chess.com/*"
   ],
   "web_accessible_resources": [
     {
       "resources": [
-        "engine-worker.js",
-        "stockfish-worker.js",
-        "stockfish/*",
-        "maia3/*",
-        "ort.min.js"
+        "stockfish-19-lite-single.js",
+        "stockfish-19-lite-single.wasm"
       ],
       "matches": [
         "https://www.chess.com/*"

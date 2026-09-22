@@ -10,7 +10,7 @@
   <main class="cmh-popup">
     <header class="cmh-header">
       <div>
-        <div class="cmh-eyebrow">MAIA 3 CHESS ANALYSIS</div>
+        <div class="cmh-eyebrow">STOCKFISH 19 CHESS ANALYSIS</div>
         <h1>Chess Move Helper</h1>
       </div>
       <div class="cmh-header-actions">
@@ -44,10 +44,6 @@
           <span class="cmh-meta-label">GAME MODE</span>
           <span class="cmh-meta-value" id="cmh-game-mode">Detecting...</span>
         </div>
-        <div class="cmh-meta-item">
-          <span class="cmh-meta-label">POSITION CONFIDENCE</span>
-          <span class="cmh-meta-value" id="cmh-confidence">—</span>
-        </div>
       </div>
     </section>
 
@@ -67,61 +63,18 @@
         <span class="cmh-analysis-pv-value" id="cmh-analysis-pv">—</span>
       </div>
 
-      <div class="cmh-analysis-book" id="cmh-analysis-book"></div>
-
       <div class="cmh-candidates">
         <div class="cmh-analysis-label">TOP CANDIDATES</div>
         <div class="cmh-candidate-list" id="cmh-candidate-list"></div>
       </div>
     </section>
-
     <section class="cmh-options">
       <div class="cmh-option">
         <div>
-          <div class="cmh-option-title">Human mode</div>
-          <div class="cmh-option-subtitle">Study Maia candidates: Best, Good, Okay, Human, Mistake, Blunder</div>
-        </div>
-        <button class="cmh-toggle" id="cmh-human-mode" aria-pressed="false">
-          <span></span>
-        </button>
-      </div>
-      <div class="cmh-option">
-        <div>
           <div class="cmh-option-title">Alternative arrows</div>
-          <div class="cmh-option-subtitle">Show Maia candidate moves</div>
+          <div class="cmh-option-subtitle">Show Stockfish MultiPV candidate moves</div>
         </div>
-        <button class="cmh-toggle cmh-on" id="cmh-alternatives" aria-pressed="true">
-          <span></span>
-        </button>
-      </div>
-
-      <div class="cmh-option">
-        <div>
-          <div class="cmh-option-title">Opening book</div>
-          <div class="cmh-option-subtitle" id="cmh-book-status">Loading built-in books...</div>
-        </div>
-        <button class="cmh-toggle cmh-on" id="cmh-book-enabled" aria-pressed="true">
-          <span></span>
-        </button>
-      </div>
-
-      <div class="cmh-book-mode">
-        <label class="cmh-book-mode-label" for="cmh-engine-mode">Engine</label>
-        <select id="cmh-engine-mode">
-          <option value="maia">Maia 3</option>
-          <option value="stockfish">Stockfish 19 Lite</option>
-        </select>
-      </div>
-
-      <div class="cmh-book-mode">
-        <label class="cmh-book-mode-label" for="cmh-book-mode">Book selection</label>
-        <select id="cmh-book-mode"></select>
-      </div>
-
-      <div class="cmh-book-row">
-        <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
-        <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
-        <button class="cmh-book-clear" id="cmh-book-clear">Clear</button>
+        <button class="cmh-toggle cmh-on" id="cmh-alternatives" aria-pressed="true"><span></span></button>
       </div>
     </section>
 
@@ -137,7 +90,7 @@
       </div>
     </section>
 
-    <footer class="cmh-footer">Maia 3 • Stockfish 19 Lite • Optional Polyglot opening books</footer>
+    <footer class="cmh-footer">Stockfish 19 Lite Single • Local WASM analysis</footer>
   </main>
   <script src="popup.js"></script>
 </body>

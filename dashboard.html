@@ -11,7 +11,7 @@
   <main class="cmh-popup cmh-dashboard">
     <header class="cmh-header cmh-dashboard-header">
       <div>
-        <div class="cmh-eyebrow">MAIA 3 CHESS ANALYSIS</div>
+        <div class="cmh-eyebrow">STOCKFISH 19 CHESS ANALYSIS</div>
         <h1>Chess Move Helper</h1>
         <div class="cmh-dashboard-label">FULL DASHBOARD</div>
       </div>
@@ -45,10 +45,6 @@
               <span class="cmh-meta-label">GAME MODE</span>
               <span class="cmh-meta-value" id="cmh-game-mode">Detecting...</span>
             </div>
-            <div class="cmh-meta-item">
-              <span class="cmh-meta-label">POSITION CONFIDENCE</span>
-              <span class="cmh-meta-value" id="cmh-confidence">—</span>
-            </div>
     </div>
         </section>
 
@@ -68,53 +64,18 @@
         <span class="cmh-analysis-pv-value" id="cmh-analysis-pv">—</span>
       </div>
 
-      <div class="cmh-analysis-book" id="cmh-analysis-book"></div>
-
       <div class="cmh-candidates">
         <div class="cmh-analysis-label">TOP CANDIDATES</div>
         <div class="cmh-candidate-list" id="cmh-candidate-list"></div>
       </div>
     </section>
-
         <section class="cmh-options">
-      <div class="cmh-option">
-        <div>
-          <div class="cmh-option-title">Human mode</div>
-          <div class="cmh-option-subtitle">Study candidates: Best, Good, Okay, Human, Mistake, Blunder</div>
-        </div>
-        <button class="cmh-toggle" id="cmh-human-mode" aria-pressed="false">
-          <span></span>
-        </button>
-      </div>
           <div class="cmh-option">
             <div>
               <div class="cmh-option-title">Alternative arrows</div>
-              <div class="cmh-option-subtitle">Show good, okay, and bad candidates</div>
+              <div class="cmh-option-subtitle">Show Stockfish MultiPV candidate moves</div>
             </div>
-            <button class="cmh-toggle cmh-on" id="cmh-alternatives" aria-pressed="true">
-              <span></span>
-            </button>
-          </div>
-
-          <div class="cmh-option">
-            <div>
-              <div class="cmh-option-title">Opening book</div>
-              <div class="cmh-option-subtitle" id="cmh-book-status">Loading built-in books...</div>
-            </div>
-            <button class="cmh-toggle cmh-on" id="cmh-book-enabled" aria-pressed="true">
-              <span></span>
-            </button>
-          </div>
-
-          <div class="cmh-book-mode">
-            <label class="cmh-book-mode-label" for="cmh-book-mode">Book selection</label>
-            <select id="cmh-book-mode"></select>
-          </div>
-
-          <div class="cmh-book-row">
-            <label class="cmh-book-button" for="cmh-book-file">Load .bin book</label>
-            <input id="cmh-book-file" type="file" accept=".bin,application/octet-stream">
-            <button class="cmh-book-clear" id="cmh-book-clear">Clear</button>
+            <button class="cmh-toggle cmh-on" id="cmh-alternatives" aria-pressed="true"><span></span></button>
           </div>
         </section>
       </section>
@@ -135,12 +96,12 @@
         <section class="cmh-dashboard-info">
           <div class="cmh-section-title">HOW IT WORKS</div>
           <p>Open a Chess.com board in another tab, then use Analyze Position here.</p>
-          <p>Maia 3 generates the move candidates and arrows; Polyglot books can supply opening moves.</p>
+          <p>Stockfish 19 Lite Single generates the move candidates, evaluations, and arrows.</p>
         </section>
       </aside>
     </div>
 
-    <footer class="cmh-footer">Popup remains available from the extension toolbar • Full dashboard</footer>
+    <footer class="cmh-footer">Popup remains available from the extension toolbar • Stockfish 19</footer>
   </main>
   <script src="popup.js"></script>
 </body>
