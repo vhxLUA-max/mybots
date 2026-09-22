@@ -628,11 +628,20 @@
   function drawArrows(board,result,side=getSideToMove()){
     clearArrows(board);
     if(hidden)return;
+
+    if(getComputedStyle(board).position==="static") board.style.position="relative";
     const candidates=(result.alternatives?.length?result.alternatives:[result]).slice(0,8);
     const bestScore=candidates[0]?.score??result.score;
     const orientation=getOrientation(board);
     const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
     svg.classList.add("cmh-arrow-layer");
+    svg.style.setProperty("position","absolute","important");
+    svg.style.setProperty("inset","0","important");
+    svg.style.setProperty("width","100%","important");
+    svg.style.setProperty("height","100%","important");
+    svg.style.setProperty("z-index","2147483647","important");
+    svg.style.setProperty("display","block","important");
+    svg.style.setProperty("pointer-events","none","important");
     svg.setAttribute("viewBox","0 0 100 100");
     svg.setAttribute("shape-rendering","geometricPrecision");
     const defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
